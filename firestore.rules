@@ -1,0 +1,47 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function isAdmin() { return signedIn() && request.auth.token.admin == true; }
+    function isOwner(uid) { return signedIn() && request.auth.uid == uid; }
+
+    match /players/{uid} {
+      allow read: if signedIn();
+      allow create: if isOwner(uid)
+        && request.resource.data.uid == uid
+        && request.resource.data.role == "player";
+      allow update: if isAdmin() || (isOwner(uid)
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.role == resource.data.role
+        && request.resource.data.createdAt == resource.data.createdAt);
+      allow delete: if isAdmin();
+    }
+
+    match /teams/{teamId} {
+      allow read: if true;
+      allow create: if isAdmin() || (signedIn()
+        && request.resource.data.captainUid == request.auth.uid
+        && request.resource.data.approvalStatus == "pending"
+        && request.resource.data.members.size() == 1
+        && request.resource.data.members[0].uid == request.auth.uid);
+      allow update: if isAdmin() || (signedIn()
+        && resource.data.captainUid == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(["members", "updatedAt"]));
+      allow delete: if isAdmin();
+    }
+
+    match /tournaments/{id} { allow read: if true; allow write: if isAdmin(); }
+    match /categories/{id} { allow read: if true; allow write: if isAdmin(); }
+    match /matches/{id} { allow read: if true; allow write: if isAdmin(); }
+    match /registrations/{id} {
+      allow read: if isAdmin() || (signedIn() && resource.data.captainUid == request.auth.uid);
+      allow create: if signedIn()
+        && request.resource.data.captainUid == request.auth.uid
+        && request.resource.data.status == "pending"
+        && getAfter(/databases/$(database)/documents/teams/$(request.resource.data.teamId)).data.captainUid == request.auth.uid
+        && get(/databases/$(database)/documents/tournaments/$(request.resource.data.tournamentId)).data.registrationOpen == true;
+      allow update, delete: if isAdmin();
+    }
+  }
+}
