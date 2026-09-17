@@ -244,7 +244,7 @@ function TeamStats({ stats }: { stats: TeamStat[] }) {
           key={stat.label}
           className="rounded-xl border border-white/[0.08] bg-white/[0.035] px-3 py-2.5 backdrop-blur-sm md:rounded-2xl md:px-5 md:py-4"
         >
-          <p className="text-[7px] font-bold uppercase tracking-[0.17em] text-white/35 md:text-xs">
+          <p className="text-[7px] font-bold uppercase tracking-[0.17em] text-white/99 md:text-xs">
             {stat.label}
           </p>
           <p className="mt-1 font-mono text-xl font-black tabular-nums text-white md:text-4xl">
@@ -869,7 +869,7 @@ export function ScoreboardDisplay({ matchId }: { matchId: string }) {
       `}</style>
 
       <ArenaBackground sport={sportMode} />
-      <MatchTopBar sport={sportMode} />
+      {/* <MatchTopBar sport={sportMode} /> */}
 
       <ScoreCelebration
         event={scoreEvent}

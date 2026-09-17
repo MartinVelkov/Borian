@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   ArrowRight,
   CalendarDays,
@@ -22,13 +23,15 @@ import {
   getCategories,
   getPublishedTournaments,
 } from "@/lib/firestore-service";
+import { getHomeRoute } from "@/lib/auth-routing";
 
 import type { Category, Tournament } from "@/lib/types";
 
-type Sport = "football" | "basketball";
+type Sport = "FOOTBALL" | "BASKETBALL";
 
 export default function HomePage() {
-  const { user, player } = useAuth();
+  const router = useRouter();
+  const { user, player, logout } = useAuth();
 
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
   const [categories, setCategories] = useState<
@@ -36,8 +39,10 @@ export default function HomePage() {
   >({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [logoutError, setLogoutError] = useState("");
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [activeSport, setActiveSport] =
-    useState<Sport>("football");
+    useState<Sport>("FOOTBALL");
 
   useEffect(() => {
     void (async () => {
@@ -71,9 +76,7 @@ export default function HomePage() {
 
   const accountHref = !user
     ? "/register"
-    : !player?.profileCompleted
-      ? "/complete-profile"
-      : "/player";
+    : getHomeRoute(user.email, player?.profileCompleted === true);
 
   const filteredTournaments = useMemo(() => {
     return tournaments.filter(
@@ -101,6 +104,26 @@ export default function HomePage() {
         });
     });
   };
+
+  async function handleLogout() {
+    if (isLoggingOut) return;
+
+    setIsLoggingOut(true);
+    setLogoutError("");
+
+    try {
+      await logout();
+      router.replace("/");
+      router.refresh();
+    } catch (cause) {
+      console.error("Logout failed:", cause);
+      setLogoutError(
+        "Излизането не беше успешно. Моля, опитайте отново.",
+      );
+    } finally {
+      setIsLoggingOut(false);
+    }
+  }
 
   return (
     <main className="min-h-screen overflow-hidden bg-[#f5f5f7] text-[#1d1d1f]">
@@ -145,7 +168,7 @@ export default function HomePage() {
             <button
               type="button"
               onClick={() =>
-                selectSport("football")
+                selectSport("FOOTBALL")
               }
               className="text-black/65 transition hover:text-black"
             >
@@ -155,7 +178,7 @@ export default function HomePage() {
             <button
               type="button"
               onClick={() =>
-                selectSport("basketball")
+                selectSport("BASKETBALL")
               }
               className="text-black/65 transition hover:text-black"
             >
@@ -163,18 +186,44 @@ export default function HomePage() {
             </button>
           </nav>
 
-          <Button
-            asChild
-            className="h-9 rounded-full bg-[#0071e3] px-5 text-[13px] font-medium text-white shadow-none hover:bg-[#0077ed]"
-          >
-            <Link href={accountHref}>
-              {user
-                ? "Моят профил"
-                : "Регистрация"}
-            </Link>
-          </Button>
+          {user ? (
+            <div className="flex shrink-0 items-center gap-2">
+              <Button
+                asChild
+                className="h-9 rounded-full bg-[#0071e3] px-4 text-[13px] font-medium text-white shadow-none hover:bg-[#0077ed] sm:px-5"
+              >
+                <Link href={accountHref}>Моят профил</Link>
+              </Button>
+
+              <Button
+                type="button"
+                variant="outline"
+                className="h-9 rounded-full border-black/10 bg-white/80 px-3 text-[13px] font-medium text-[#1d1d1f] shadow-none hover:bg-black/[0.04] sm:px-4"
+                onClick={handleLogout}
+                disabled={isLoggingOut}
+              >
+                {isLoggingOut ? "Излизане…" : "Изход"}
+              </Button>
+            </div>
+          ) : (
+            <Button
+              asChild
+              className="h-9 rounded-full bg-[#0071e3] px-5 text-[13px] font-medium text-white shadow-none hover:bg-[#0077ed]"
+            >
+              <Link href="/register">Регистрация</Link>
+            </Button>
+          )}
         </div>
       </header>
+
+      {logoutError && (
+        <div
+          role="alert"
+          className="border-b border-red-200 bg-red-50 px-5 py-2 text-center text-sm text-red-700"
+        >
+          {logoutError}
+        </div>
+      )}
 
       {/* ================================================= */}
       {/* HERO                                              */}
@@ -252,7 +301,7 @@ export default function HomePage() {
               type="button"
               aria-label="Покажи футболни турнири"
               onClick={() =>
-                selectSport("football")
+                selectSport("FOOTBALL")
               }
               className="group relative flex h-[105px] w-[105px] items-center justify-center rounded-[32px] bg-[#f5f5f7] transition duration-500 hover:-translate-y-2 hover:shadow-xl md:h-[125px] md:w-[125px]"
             >
@@ -267,7 +316,7 @@ export default function HomePage() {
               type="button"
               aria-label="Покажи баскетболни турнири"
               onClick={() =>
-                selectSport("basketball")
+                selectSport("BASKETBALL")
               }
               className="group relative flex h-[105px] w-[105px] items-center justify-center rounded-[32px] bg-[#f5f5f7] transition duration-500 hover:-translate-y-2 hover:shadow-xl md:h-[125px] md:w-[125px]"
             >
@@ -305,12 +354,12 @@ export default function HomePage() {
               type="button"
               onClick={() =>
                 selectSport(
-                  "football",
+                  "FOOTBALL",
                   false
                 )
               }
               className={`flex items-center gap-2 rounded-full px-6 py-3 text-[15px] font-semibold transition-all duration-300 ${
-                activeSport === "football"
+                activeSport === "FOOTBALL"
                   ? "bg-white text-black shadow-sm"
                   : "text-black/50 hover:text-black"
               }`}
@@ -323,12 +372,12 @@ export default function HomePage() {
               type="button"
               onClick={() =>
                 selectSport(
-                  "basketball",
+                  "BASKETBALL",
                   false
                 )
               }
               className={`flex items-center gap-2 rounded-full px-6 py-3 text-[15px] font-semibold transition-all duration-300 ${
-                activeSport === "basketball"
+                activeSport === "BASKETBALL"
                   ? "bg-white text-black shadow-sm"
                   : "text-black/50 hover:text-black"
               }`}
@@ -465,9 +514,9 @@ function TournamentCard({
   profileCompleted?: boolean;
   featured?: boolean;
 }) {
-  const football =
-    tournament.sport === "football";
-
+  const FOOTBALL =
+    tournament.sport === "FOOTBALL";
+    console.log("Is it FOOTBALL",FOOTBALL)
   return (
     <article
       className={`group relative overflow-hidden bg-white transition-shadow duration-500 hover:shadow-[0_30px_80px_rgba(0,0,0,0.07)] ${
@@ -484,14 +533,14 @@ function TournamentCard({
             <div className="mb-5 flex flex-wrap items-center gap-3">
               <p
                 className={`text-[14px] font-semibold ${
-                  football
+                  FOOTBALL
                     ? "text-[#0071e3]"
                     : "text-[#f56300]"
                 }`}
               >
-                {football
-                  ? "3x3 Football"
-                  : "3x3 Basketball"}
+                {FOOTBALL
+                  ? "3x3 FOOTBALL"
+                  : "3x3 BASKETBALL"}
               </p>
 
               {!tournament.registrationOpen && (
@@ -507,7 +556,7 @@ function TournamentCard({
 
             <p className="mt-6 max-w-[460px] text-[17px] leading-relaxed text-[#6e6e73]">
               {tournament.description ||
-                (football
+                (FOOTBALL
                   ? "3x3 футболен турнир"
                   : "3x3 баскетболен турнир")}
             </p>
@@ -565,7 +614,7 @@ function TournamentCard({
           <div className="relative min-h-[340px] overflow-hidden md:min-h-full">
             <div
               className={`absolute inset-0 ${
-                football
+                FOOTBALL
                   ? "bg-gradient-to-br from-[#dff4ff] via-[#e9f8ff] to-[#ffffff]"
                   : "bg-gradient-to-br from-[#fff0dd] via-[#fff6e9] to-[#ffffff]"
               }`}
@@ -573,7 +622,7 @@ function TournamentCard({
 
             <div
               className={`absolute left-1/2 top-1/2 h-[380px] w-[380px] -translate-x-1/2 -translate-y-1/2 rounded-full blur-[90px] ${
-                football
+                FOOTBALL
                   ? "bg-blue-400/20"
                   : "bg-orange-400/30"
               }`}
@@ -581,7 +630,7 @@ function TournamentCard({
 
             <div className="absolute inset-0 flex items-center justify-center">
               <span className="select-none text-[180px] drop-shadow-[0_35px_25px_rgba(0,0,0,0.15)] transition-transform duration-700 group-hover:-rotate-3 group-hover:scale-[1.08] md:text-[230px]">
-                {football ? "⚽" : "🏀"}
+                {FOOTBALL ? "⚽" : "🏀"}
               </span>
             </div>
           </div>
@@ -592,14 +641,14 @@ function TournamentCard({
             <div className="mb-2 flex flex-wrap items-center gap-3">
               <p
                 className={`text-[13px] font-semibold ${
-                  football
+                  FOOTBALL
                     ? "text-[#0071e3]"
                     : "text-[#f56300]"
                 }`}
               >
-                {football
-                  ? "3x3 Football"
-                  : "3x3 Basketball"}
+                {FOOTBALL
+                  ? "3x3 FOOTBALL"
+                  : "3x3 BASKETBALL"}
               </p>
 
               {!tournament.registrationOpen && (
@@ -692,13 +741,13 @@ function EmptySport({
 }: {
   sport: Sport;
 }) {
-  const football = sport === "football";
+  const FOOTBALL = sport === "FOOTBALL";
 
   return (
     <div className="relative overflow-hidden rounded-[38px] bg-white px-8 py-24 text-center md:py-32">
       <div
         className={`pointer-events-none absolute left-1/2 top-1/2 h-[350px] w-[350px] -translate-x-1/2 -translate-y-1/2 rounded-full blur-[100px] ${
-          football
+          FOOTBALL
             ? "bg-blue-300/20"
             : "bg-orange-300/25"
         }`}
@@ -706,7 +755,7 @@ function EmptySport({
 
       <div className="relative">
         <div className="mb-7 text-[90px]">
-          {football ? "⚽" : "🏀"}
+          {FOOTBALL ? "⚽" : "🏀"}
         </div>
 
         <h3 className="text-[32px] font-semibold tracking-[-0.035em]">
@@ -715,7 +764,7 @@ function EmptySport({
 
         <p className="mx-auto mt-4 max-w-[500px] text-[17px] leading-relaxed text-[#6e6e73]">
           В момента няма публикувани{" "}
-          {football
+          {FOOTBALL
             ? "футболни"
             : "баскетболни"}{" "}
           турнири.

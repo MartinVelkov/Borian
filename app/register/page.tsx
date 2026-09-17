@@ -5,7 +5,9 @@ import {
   useEffect,
   useState,
   type ChangeEvent,
+  type ComponentProps,
   type FormEvent,
+  type ReactNode,
 } from "react";
 
 import Image from "next/image";
@@ -55,49 +57,158 @@ import {
 } from "lucide-react";
 
 import { auth, db, storage } from "@/lib/firebase";
+import { getHomeRoute } from "@/lib/auth-routing";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useAuth } from "@/components/auth/auth-provider";
 
 import logo from "../bulgarian-street-sports-logo.jpg";
 
+/* ======================================================== */
+/* DATE HELPERS                                              */
+/* ======================================================== */
+
+function formatDateForInput(date: Date) {
+  const year = date.getFullYear();
+
+  const month = String(
+    date.getMonth() + 1
+  ).padStart(2, "0");
+
+  const day = String(
+    date.getDate()
+  ).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function getMaxBirthDate() {
+  const date = new Date();
+
+  date.setFullYear(
+    date.getFullYear() - 3
+  );
+
+  return formatDateForInput(date);
+}
+
+function isValidMinimumAge(
+  birthDate: string,
+  maxBirthDate: string
+) {
+  if (!birthDate) {
+    return true;
+  }
+
+  return birthDate <= maxBirthDate;
+}
+
+/* ======================================================== */
+/* PAGE                                                      */
+/* ======================================================== */
+
 export default function RegisterPage() {
   const router = useRouter();
+  const { refreshPlayer } = useAuth();
+
+  /*
+   * Latest allowed date of birth.
+   *
+   * Example:
+   * If today is 06.09.2026,
+   * latest allowed birth date = 06.09.2023.
+   */
+  const maxBirthDate =
+    getMaxBirthDate();
 
   /* ====================================================== */
   /* FORM STATE                                             */
   /* ====================================================== */
 
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [birthDate, setBirthDate] = useState("");
-  const [email, setEmail] = useState("");
+  const [
+    firstName,
+    setFirstName,
+  ] = useState("");
 
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] =
-    useState("");
+  const [
+    lastName,
+    setLastName,
+  ] = useState("");
 
-  const [photoFile, setPhotoFile] =
-    useState<File | null>(null);
+  const [
+    phone,
+    setPhone,
+  ] = useState("");
 
-  const [photoPreview, setPhotoPreview] =
-    useState<string | null>(null);
+  const [
+    birthDate,
+    setBirthDate,
+  ] = useState("");
 
-  const [showPassword, setShowPassword] =
-    useState(false);
+  const [
+    email,
+    setEmail,
+  ] = useState("");
 
-  const [showConfirmPassword, setShowConfirmPassword] =
-    useState(false);
+  const [
+    password,
+    setPassword,
+  ] = useState("");
 
-  const [loading, setLoading] = useState(false);
-  const [googleLoading, setGoogleLoading] =
-    useState(false);
-  const [photoUploading, setPhotoUploading] =
-    useState(false);
+  const [
+    confirmPassword,
+    setConfirmPassword,
+  ] = useState("");
 
-  const [error, setError] =
-    useState<string | null>(null);
+  const [
+    photoFile,
+    setPhotoFile,
+  ] =
+    useState<File | null>(
+      null
+    );
+
+  const [
+    photoPreview,
+    setPhotoPreview,
+  ] =
+    useState<string | null>(
+      null
+    );
+
+  const [
+    showPassword,
+    setShowPassword,
+  ] = useState(false);
+
+  const [
+    showConfirmPassword,
+    setShowConfirmPassword,
+  ] = useState(false);
+
+  const [
+    loading,
+    setLoading,
+  ] = useState(false);
+
+  const [
+    googleLoading,
+    setGoogleLoading,
+  ] = useState(false);
+
+  const [
+    photoUploading,
+    setPhotoUploading,
+  ] = useState(false);
+
+  const [
+    error,
+    setError,
+  ] =
+    useState<string | null>(
+      null
+    );
 
   /* ====================================================== */
   /* IMAGE CLEANUP                                          */
@@ -106,7 +217,9 @@ export default function RegisterPage() {
   useEffect(() => {
     return () => {
       if (photoPreview) {
-        URL.revokeObjectURL(photoPreview);
+        URL.revokeObjectURL(
+          photoPreview
+        );
       }
     };
   }, [photoPreview]);
@@ -115,158 +228,250 @@ export default function RegisterPage() {
   /* PHOTO UPLOAD                                           */
   /* ====================================================== */
 
-  const uploadProfilePhoto = useCallback(
-    async (userId: string, file: File) => {
-      setPhotoUploading(true);
-
-      try {
-        const photoRef = ref(
-          storage,
-          `players/${userId}/${Date.now()}-${file.name}`
+  const uploadProfilePhoto =
+    useCallback(
+      async (
+        userId: string,
+        file: File
+      ) => {
+        setPhotoUploading(
+          true
         );
 
-        await uploadBytes(photoRef, file);
+        try {
+          const photoRef =
+            ref(
+              storage,
+              `players/${userId}/${Date.now()}-${file.name}`
+            );
 
-        return await getDownloadURL(photoRef);
-      } finally {
-        setPhotoUploading(false);
-      }
-    },
-    []
-  );
+          await uploadBytes(
+            photoRef,
+            file
+          );
+
+          return await getDownloadURL(
+            photoRef
+          );
+        } finally {
+          setPhotoUploading(
+            false
+          );
+        }
+      },
+      []
+    );
 
   /* ====================================================== */
   /* GOOGLE USER FINALIZATION                               */
   /* ====================================================== */
 
-  const finalizeGoogleUser = useCallback(
-    async (
-      user: FirebaseUser,
-      options?: {
-        birthDate?: string;
-        photoFile?: File | null;
-      }
-    ) => {
-      const playerRef = doc(
-        db,
-        "players",
-        user.uid
-      );
-
-      const playerSnap =
-        await getDoc(playerRef);
-
-      let photoURL =
-        user.photoURL ?? null;
-
-      if (options?.photoFile) {
-        photoURL =
-          await uploadProfilePhoto(
-            user.uid,
-            options.photoFile
+  const finalizeGoogleUser =
+    useCallback(
+      async (
+        user: FirebaseUser,
+        options?: {
+          birthDate?: string;
+          photoFile?: File | null;
+        }
+      ) => {
+        /*
+         * Validate age again here.
+         * This makes Google registration respect
+         * the same 3-year minimum age.
+         */
+        if (
+          options?.birthDate &&
+          !isValidMinimumAge(
+            options.birthDate,
+            maxBirthDate
+          )
+        ) {
+          setError(
+            "Играчът трябва да бъде на поне 3 години."
           );
-      }
 
-      if (playerSnap.exists()) {
+          return;
+        }
+
+        const playerRef = doc(
+          db,
+          "players",
+          user.uid
+        );
+
+        const playerSnap =
+          await getDoc(
+            playerRef
+          );
+
+        let photoURL =
+          user.photoURL ?? null;
+
+        if (
+          options?.photoFile
+        ) {
+          photoURL =
+            await uploadProfilePhoto(
+              user.uid,
+              options.photoFile
+            );
+        }
+
+        /*
+         * Existing player
+         */
+
+        if (
+          playerSnap.exists()
+        ) {
+          await setDoc(
+            playerRef,
+            {
+              birthDate:
+                options?.birthDate ||
+                null,
+
+              photoURL,
+
+              updatedAt:
+                serverTimestamp(),
+            },
+            {
+              merge: true,
+            }
+          );
+
+          await refreshPlayer();
+
+          router.replace(
+            getHomeRoute(
+              user.email,
+              playerSnap.data().profileCompleted === true
+            )
+          );
+
+          return;
+        }
+
+        /*
+         * New Google player
+         */
+
         await setDoc(
           playerRef,
           {
+            uid: user.uid,
+
+            firstName: "",
+            lastName: "",
+
+            displayName:
+              user.displayName ??
+              "",
+
+            email:
+              user.email ?? "",
+
+            phone: "",
+
             birthDate:
-              options?.birthDate || null,
+              options?.birthDate ||
+              null,
+
             photoURL,
+
+            role: "player",
+
+            authProviders:
+              user.providerData.map(
+                (item) =>
+                  item.providerId
+              ),
+
+            profileCompleted:
+              false,
+
+            emailVerified:
+              user.emailVerified,
+
+            phoneVerified:
+              false,
+
+            createdAt:
+              serverTimestamp(),
+
             updatedAt:
               serverTimestamp(),
-          },
-          {
-            merge: true,
           }
         );
 
-        router.push("/dashboard");
-        return;
-      }
+        await refreshPlayer();
 
-      await setDoc(playerRef, {
-        uid: user.uid,
-
-        firstName: "",
-        lastName: "",
-
-        displayName:
-          user.displayName ?? "",
-
-        email:
-          user.email ?? "",
-
-        phone: "",
-
-        birthDate:
-          options?.birthDate || null,
-
-        photoURL,
-
-        role: "player",
-
-        authProviders:
-          user.providerData.map(
-            (item) => item.providerId
-          ),
-
-        profileCompleted: false,
-
-        emailVerified:
-          user.emailVerified,
-
-        phoneVerified: false,
-
-        createdAt:
-          serverTimestamp(),
-
-        updatedAt:
-          serverTimestamp(),
-      });
-
-      router.push("/dashboard");
-    },
-    [router, uploadProfilePhoto]
-  );
+        router.replace(
+          getHomeRoute(
+            user.email,
+            false
+          )
+        );
+      },
+      [
+        maxBirthDate,
+        refreshPlayer,
+        router,
+        uploadProfilePhoto,
+      ]
+    );
 
   /* ====================================================== */
   /* GOOGLE REDIRECT RESULT                                 */
   /* ====================================================== */
 
   useEffect(() => {
-    let cancelled = false;
+    let cancelled =
+      false;
 
-    void getRedirectResult(auth)
-      .then(async (result) => {
-        if (
-          cancelled ||
-          !result?.user
-        ) {
-          return;
+    void getRedirectResult(
+      auth
+    )
+      .then(
+        async (result) => {
+          if (
+            cancelled ||
+            !result?.user
+          ) {
+            return;
+          }
+
+          await finalizeGoogleUser(
+            result.user
+          );
         }
+      )
+      .catch(
+        (err: unknown) => {
+          if (cancelled) {
+            return;
+          }
 
-        await finalizeGoogleUser(
-          result.user
-        );
-      })
-      .catch((err: unknown) => {
-        if (cancelled) {
-          return;
+          console.error(
+            err
+          );
+
+          setError(
+            mapGoogleError(
+              err
+            )
+          );
         }
-
-        console.error(err);
-
-        setError(
-          mapGoogleError(err)
-        );
-      });
+      );
 
     return () => {
       cancelled = true;
     };
-  }, [finalizeGoogleUser]);
+  }, [
+    finalizeGoogleUser,
+  ]);
 
   /* ====================================================== */
   /* PHOTO SELECTION                                        */
@@ -276,7 +481,8 @@ export default function RegisterPage() {
     event: ChangeEvent<HTMLInputElement>
   ) {
     const file =
-      event.target.files?.[0];
+      event.target
+        .files?.[0];
 
     if (photoPreview) {
       URL.revokeObjectURL(
@@ -286,7 +492,10 @@ export default function RegisterPage() {
 
     if (!file) {
       setPhotoFile(null);
-      setPhotoPreview(null);
+      setPhotoPreview(
+        null
+      );
+
       return;
     }
 
@@ -318,8 +527,50 @@ export default function RegisterPage() {
     setPhotoFile(file);
 
     setPhotoPreview(
-      URL.createObjectURL(file)
+      URL.createObjectURL(
+        file
+      )
     );
+  }
+
+  /* ====================================================== */
+  /* DATE SELECTION                                         */
+  /* ====================================================== */
+
+  function handleBirthDateChange(
+    value: string
+  ) {
+    setError(null);
+
+    /*
+     * User can clear the field.
+     */
+    if (!value) {
+      setBirthDate("");
+
+      return;
+    }
+
+    /*
+     * Do not allow a date that makes
+     * the player younger than 3.
+     */
+    if (
+      value >
+      maxBirthDate
+    ) {
+      setBirthDate(
+        maxBirthDate
+      );
+
+      setError(
+        "Играчът трябва да бъде на поне 3 години."
+      );
+
+      return;
+    }
+
+    setBirthDate(value);
   }
 
   /* ====================================================== */
@@ -333,40 +584,79 @@ export default function RegisterPage() {
 
     setError(null);
 
-    if (!firstName.trim()) {
+    /* NAME */
+
+    if (
+      !firstName.trim()
+    ) {
       setError(
         "Моля, въведете име."
       );
+
       return;
     }
 
-    if (!lastName.trim()) {
+    /* LAST NAME */
+
+    if (
+      !lastName.trim()
+    ) {
       setError(
         "Моля, въведете фамилия."
       );
+
       return;
     }
+
+    /* PHONE */
 
     if (!phone.trim()) {
       setError(
         "Моля, въведете телефонен номер."
       );
+
       return;
     }
+
+    /* EMAIL */
 
     if (!email.trim()) {
       setError(
         "Моля, въведете имейл."
       );
+
       return;
     }
 
-    if (password.length < 6) {
+    /* MINIMUM AGE */
+
+    if (
+      birthDate &&
+      !isValidMinimumAge(
+        birthDate,
+        maxBirthDate
+      )
+    ) {
+      setError(
+        "Играчът трябва да бъде на поне 3 години."
+      );
+
+      return;
+    }
+
+    /* PASSWORD */
+
+    if (
+      password.length < 6
+    ) {
       setError(
         "Паролата трябва да бъде поне 6 символа."
       );
+
       return;
     }
+
+    /* PASSWORD MATCH */
 
     if (
       password !==
@@ -375,24 +665,16 @@ export default function RegisterPage() {
       setError(
         "Паролите не съвпадат."
       );
+
       return;
     }
-
-    const maxBirthDate = (() => {
-  const date = new Date();
-  date.setFullYear(date.getFullYear() - 3);
-
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-
-  return `${year}-${month}-${day}`;
-})();
 
     try {
       setLoading(true);
 
-      /* Firebase Authentication */
+      /* ----------------------------------------------- */
+      /* 1. FIREBASE AUTHENTICATION                      */
+      /* ----------------------------------------------- */
 
       const credential =
         await createUserWithEmailAndPassword(
@@ -407,13 +689,20 @@ export default function RegisterPage() {
       const displayName =
         `${firstName.trim()} ${lastName.trim()}`;
 
-      /* Auth profile */
+      /* ----------------------------------------------- */
+      /* 2. FIREBASE AUTH PROFILE                        */
+      /* ----------------------------------------------- */
 
-      await updateProfile(user, {
-        displayName,
-      });
+      await updateProfile(
+        user,
+        {
+          displayName,
+        }
+      );
 
-      /* Photo */
+      /* ----------------------------------------------- */
+      /* 3. PHOTO                                        */
+      /* ----------------------------------------------- */
 
       let photoURL:
         | string
@@ -427,7 +716,9 @@ export default function RegisterPage() {
           );
       }
 
-      /* Firestore player */
+      /* ----------------------------------------------- */
+      /* 4. FIRESTORE PLAYER                             */
+      /* ----------------------------------------------- */
 
       await setDoc(
         doc(
@@ -454,7 +745,8 @@ export default function RegisterPage() {
             phone.trim(),
 
           birthDate:
-            birthDate || null,
+            birthDate ||
+            null,
 
           photoURL,
 
@@ -482,19 +774,28 @@ export default function RegisterPage() {
         }
       );
 
-      /* Verification */
+      await refreshPlayer();
+
+      /* ----------------------------------------------- */
+      /* 5. EMAIL VERIFICATION                           */
+      /* ----------------------------------------------- */
 
       await sendEmailVerification(
         user
       );
 
-      router.push(
-        "/dashboard"
+      router.replace(
+        getHomeRoute(
+          user.email,
+          true
+        )
       );
     } catch (err: any) {
       console.error(err);
 
-      switch (err?.code) {
+      switch (
+        err?.code
+      ) {
         case "auth/email-already-in-use":
           setError(
             "Вече съществува акаунт с този имейл."
@@ -524,21 +825,43 @@ export default function RegisterPage() {
   }
 
   /* ====================================================== */
-  /* GOOGLE                                                 */
+  /* GOOGLE REGISTRATION                                    */
   /* ====================================================== */
 
   async function handleGoogleRegister() {
+    /*
+     * Validate date before Google popup.
+     */
+    if (
+      birthDate &&
+      !isValidMinimumAge(
+        birthDate,
+        maxBirthDate
+      )
+    ) {
+      setError(
+        "Играчът трябва да бъде на поне 3 години."
+      );
+
+      return;
+    }
+
     try {
-      setGoogleLoading(true);
+      setGoogleLoading(
+        true
+      );
+
       setError(null);
 
       const provider =
         new GoogleAuthProvider();
 
-      provider.setCustomParameters({
-        prompt:
-          "select_account",
-      });
+      provider.setCustomParameters(
+        {
+          prompt:
+            "select_account",
+        }
+      );
 
       try {
         const credential =
@@ -576,9 +899,15 @@ export default function RegisterPage() {
         mapGoogleError(err)
       );
     } finally {
-      setGoogleLoading(false);
+      setGoogleLoading(
+        false
+      );
     }
   }
+
+  /* ====================================================== */
+  /* BUSY STATE                                             */
+  /* ====================================================== */
 
   const busy =
     loading ||
@@ -642,7 +971,7 @@ export default function RegisterPage() {
         {/* ================================================= */}
 
         <section className="relative hidden overflow-hidden bg-black px-12 py-16 text-white lg:flex lg:flex-col lg:justify-between xl:px-20 xl:py-20">
-          {/* BACKGROUND GLOW */}
+          {/* BACKGROUND */}
 
           <div className="pointer-events-none absolute inset-0">
             <div className="absolute -left-[180px] top-[8%] h-[520px] w-[520px] rounded-full bg-blue-500/20 blur-[150px]" />
@@ -702,7 +1031,7 @@ export default function RegisterPage() {
                   <Users />
                 }
                 title="Изгради своя профил"
-                description="Твоят играчки профил остава с теб във всеки турнир."
+                description="Твоят играчески профил остава с теб във всеки турнир."
               />
 
               <Feature
@@ -727,9 +1056,9 @@ export default function RegisterPage() {
         {/* ================================================= */}
 
         <section className="relative flex justify-center bg-[#f5f5f7] px-5 py-12 sm:px-8 md:py-16 lg:px-12 xl:px-20">
-          {/* MOBILE INTRO */}
-
           <div className="w-full max-w-[620px]">
+            {/* MOBILE INTRO */}
+
             <div className="mb-10 lg:hidden">
               <div className="mb-8 flex h-[76px] w-[76px] items-center justify-center overflow-hidden rounded-[22px] bg-white shadow-[0_15px_40px_rgba(0,0,0,0.07)]">
                 <Image
@@ -744,7 +1073,7 @@ export default function RegisterPage() {
               <h1 className="text-[44px] font-semibold leading-[1] tracking-[-0.045em]">
                 Създай своя
                 <br />
-                играчки профил.
+                играчески профил.
               </h1>
 
               <p className="mt-5 max-w-[450px] text-[17px] leading-relaxed text-[#6e6e73]">
@@ -814,12 +1143,14 @@ export default function RegisterPage() {
               }
               className="space-y-7"
             >
-              {/* NAME */}
+              {/* PERSONAL INFO */}
 
               <div>
                 <SectionTitle>
                   Лична информация
                 </SectionTitle>
+
+                {/* NAME */}
 
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
                   <AppleInput
@@ -855,13 +1186,17 @@ export default function RegisterPage() {
                   />
                 </div>
 
+                {/* PHONE + BIRTH DATE */}
+
                 <div className="mt-3 grid gap-3 sm:grid-cols-2">
                   <AppleInput
                     id="phone"
                     type="tel"
                     label="Телефон"
                     placeholder="+359 88 123 4567"
-                    value={phone}
+                    value={
+                      phone
+                    }
                     onChange={(e) =>
                       setPhone(
                         e.target.value
@@ -869,32 +1204,45 @@ export default function RegisterPage() {
                     }
                     disabled={busy}
                     autoComplete="tel"
-                    icon={<Phone />}
+                    icon={
+                      <Phone />
+                    }
                   />
 
-<AppleInput
-  id="birthDate"
-  type="date"
-  label="Дата на раждане"
-  value={birthDate}
-  max={maxBirthDate}
-  onChange={(e) => {
-    const selectedDate = e.target.value;
+                  <div>
+                    <AppleInput
+                      id="birthDate"
+                      type="date"
+                      label="Дата на раждане"
+                      value={
+                        birthDate
+                      }
+                      max={
+                        maxBirthDate
+                      }
+                      onChange={(e) =>
+                        handleBirthDateChange(
+                          e.target
+                            .value
+                        )
+                      }
+                      disabled={busy}
+                      icon={
+                        <CalendarDays />
+                      }
+                    />
 
-    if (selectedDate > maxBirthDate) {
-      setBirthDate(maxBirthDate);
-      return;
-    }
-
-    setBirthDate(selectedDate);
-  }}
-  disabled={busy}
-  icon={<CalendarDays />}
-/>
+                    <p className="mt-2 px-1 text-[11px] leading-relaxed text-[#86868b]">
+                      Минимална възраст:
+                      3 години.
+                    </p>
+                  </div>
                 </div>
               </div>
 
-              {/* PHOTO */}
+              {/* ================================================= */}
+              {/* PHOTO                                             */}
+              {/* ================================================= */}
 
               <div>
                 <SectionTitle>
@@ -953,7 +1301,9 @@ export default function RegisterPage() {
                 </label>
               </div>
 
-              {/* ACCOUNT */}
+              {/* ================================================= */}
+              {/* ACCOUNT                                           */}
+              {/* ================================================= */}
 
               <div>
                 <SectionTitle>
@@ -966,7 +1316,9 @@ export default function RegisterPage() {
                     type="email"
                     label="Имейл"
                     placeholder="ivan@example.com"
-                    value={email}
+                    value={
+                      email
+                    }
                     onChange={(e) =>
                       setEmail(
                         e.target.value
@@ -974,14 +1326,18 @@ export default function RegisterPage() {
                     }
                     disabled={busy}
                     autoComplete="email"
-                    icon={<Mail />}
+                    icon={
+                      <Mail />
+                    }
                   />
 
                   <PasswordField
                     id="password"
                     label="Парола"
                     placeholder="Минимум 6 символа"
-                    value={password}
+                    value={
+                      password
+                    }
                     onChange={
                       setPassword
                     }
@@ -1028,7 +1384,9 @@ export default function RegisterPage() {
                 )}
               </div>
 
-              {/* ERROR */}
+              {/* ================================================= */}
+              {/* ERROR                                             */}
+              {/* ================================================= */}
 
               {error && (
                 <div
@@ -1039,12 +1397,14 @@ export default function RegisterPage() {
                 </div>
               )}
 
-              {/* SUBMIT */}
+              {/* ================================================= */}
+              {/* SUBMIT                                            */}
+              {/* ================================================= */}
 
               <Button
                 type="submit"
                 disabled={busy}
-                className="group h-[56px] w-full rounded-full bg-[#0071e3] text-[16px] font-semibold text-white shadow-none transition hover:bg-[#0077ed]"
+                className="group h-[56px] w-full rounded-full bg-[#0071e3] text-[16px] font-semibold text-white shadow-none transition hover:bg-[#0077ed] disabled:opacity-50"
               >
                 {loading ||
                 photoUploading ? (
@@ -1081,7 +1441,7 @@ export default function RegisterPage() {
 
               <p className="mx-auto max-w-[500px] text-center text-[11px] leading-[1.6] text-[#86868b]">
                 С регистрацията
-                създаваш свой играчки
+                създаваш свой играчески
                 профил за участие в
                 турнири и съхраняване
                 на индивидуалната ти
@@ -1096,7 +1456,7 @@ export default function RegisterPage() {
 }
 
 /* ======================================================== */
-/* INPUT                                                     */
+/* APPLE INPUT                                               */
 /* ======================================================== */
 
 function AppleInput({
@@ -1105,9 +1465,9 @@ function AppleInput({
   icon,
   className = "",
   ...props
-}: React.ComponentProps<typeof Input> & {
+}: ComponentProps<typeof Input> & {
   label: string;
-  icon?: React.ReactNode;
+  icon?: ReactNode;
 }) {
   return (
     <div className="relative">
@@ -1147,7 +1507,7 @@ function AppleInput({
 }
 
 /* ======================================================== */
-/* PASSWORD                                                  */
+/* PASSWORD FIELD                                            */
 /* ======================================================== */
 
 function PasswordField({
@@ -1165,14 +1525,19 @@ function PasswordField({
   label: string;
   placeholder: string;
   value: string;
+
   onChange: (
     value: string
   ) => void;
+
   visible: boolean;
+
   setVisible: (
     value: boolean
   ) => void;
+
   disabled: boolean;
+
   autoComplete?: string;
 }) {
   return (
@@ -1186,7 +1551,9 @@ function PasswordField({
             ? "text"
             : "password"
         }
-        placeholder={placeholder}
+        placeholder={
+          placeholder
+        }
         value={value}
         onChange={(event) =>
           onChange(
@@ -1198,7 +1565,7 @@ function PasswordField({
           autoComplete
         }
         aria-label={label}
-        className="h-[58px] rounded-[16px] border-0 bg-white pb-[7px] pl-11 pr-12 pt-[22px] text-[15px] shadow-none ring-1 ring-black/[0.07] transition placeholder:text-transparent hover:ring-black/[0.12] focus-visible:ring-2 focus-visible:ring-[#0071e3]"
+        className="h-[58px] rounded-[16px] border-0 bg-white pb-[7px] pl-11 pr-12 pt-[22px] text-[15px] shadow-none ring-1 ring-black/[0.07] transition placeholder:text-transparent hover:ring-black/[0.12] focus-visible:ring-2 focus-visible:ring-[#0071e3] disabled:bg-white/60"
       />
 
       <label
@@ -1216,7 +1583,9 @@ function PasswordField({
             : "Покажи паролата"
         }
         onClick={() =>
-          setVisible(!visible)
+          setVisible(
+            !visible
+          )
         }
         className="absolute right-4 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-[#86868b] transition hover:bg-black/[0.05] hover:text-black"
       >
@@ -1237,7 +1606,7 @@ function PasswordField({
 function SectionTitle({
   children,
 }: {
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <h3 className="text-[13px] font-semibold text-[#6e6e73]">
@@ -1247,7 +1616,7 @@ function SectionTitle({
 }
 
 /* ======================================================== */
-/* LEFT FEATURE                                              */
+/* FEATURE                                                   */
 /* ======================================================== */
 
 function Feature({
@@ -1255,7 +1624,7 @@ function Feature({
   title,
   description,
 }: {
-  icon: React.ReactNode;
+  icon: ReactNode;
   title: string;
   description: string;
 }) {
@@ -1296,7 +1665,8 @@ function PasswordHint({
 
   const matches =
     !!confirmed &&
-    password === confirmed;
+    password ===
+      confirmed;
 
   return (
     <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 px-1">
@@ -1373,7 +1743,8 @@ function mapGoogleError(
   err: unknown
 ) {
   const code =
-    typeof err === "object" &&
+    typeof err ===
+      "object" &&
     err !== null &&
     "code" in err
       ? String(

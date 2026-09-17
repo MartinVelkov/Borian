@@ -1,9 +1,18 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
-import { onAuthStateChanged, type User } from "firebase/auth";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { onAuthStateChanged, signOut, type User } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { getPlayerProfile } from "@/lib/firestore-service";
+import { getHomeRoute, isAdminEmail, type HomeRoute } from "@/lib/auth-routing";
 import type { Player } from "@/lib/types";
 
 type AuthState = {
@@ -11,7 +20,9 @@ type AuthState = {
   player: Player | null;
   loading: boolean;
   isAdmin: boolean;
+  homeRoute: HomeRoute | null;
   refreshPlayer: () => Promise<void>;
+  logout: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -20,26 +31,89 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [player, setPlayer] = useState<Player | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const profileRequestId = useRef(0);
 
-  async function refreshPlayer() {
-    setPlayer(auth.currentUser ? await getPlayerProfile(auth.currentUser.uid) : null);
-  }
+  const refreshPlayer = useCallback(async () => {
+    const currentUser = auth.currentUser;
+    const requestId = ++profileRequestId.current;
 
-  useEffect(() => onAuthStateChanged(auth, async (nextUser) => {
-    setUser(nextUser);
     try {
-      // Временно премахваме проверката за админ права.
-      setIsAdmin(false);
-      setPlayer(nextUser ? await getPlayerProfile(nextUser.uid) : null);
+      const nextPlayer = currentUser
+        ? await getPlayerProfile(currentUser.uid)
+        : null;
+
+      if (
+        requestId === profileRequestId.current &&
+        auth.currentUser?.uid === currentUser?.uid
+      ) {
+        setPlayer(nextPlayer);
+      }
     } finally {
-      setLoading(false);
+      if (
+        requestId === profileRequestId.current &&
+        auth.currentUser?.uid === currentUser?.uid
+      ) {
+        setLoading(false);
+      }
     }
-  }), []);
+  }, []);
+
+  const logout = useCallback(async () => {
+    await signOut(auth);
+    profileRequestId.current += 1;
+    setUser(null);
+    setPlayer(null);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    const unsubscribe = onAuthStateChanged(auth, async (nextUser) => {
+      const requestId = ++profileRequestId.current;
+      setLoading(true);
+      setUser(nextUser);
+      setPlayer(null);
+
+      try {
+        const nextPlayer = nextUser
+          ? await getPlayerProfile(nextUser.uid)
+          : null;
+
+        if (
+          active &&
+          requestId === profileRequestId.current &&
+          auth.currentUser?.uid === nextUser?.uid
+        ) {
+          setPlayer(nextPlayer);
+        }
+      } catch (error) {
+        console.error("Failed to load the authenticated player profile:", error);
+      } finally {
+        if (
+          active &&
+          requestId === profileRequestId.current &&
+          auth.currentUser?.uid === nextUser?.uid
+        ) {
+          setLoading(false);
+        }
+      }
+    });
+
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, []);
+
+  const isAdmin = isAdminEmail(user?.email);
+  const homeRoute = user
+    ? getHomeRoute(user.email, player?.profileCompleted === true)
+    : null;
 
   const value = useMemo(
-    () => ({ user, player, loading, isAdmin, refreshPlayer }),
-    [user, player, loading, isAdmin],
+    () => ({ user, player, loading, isAdmin, homeRoute, refreshPlayer, logout }),
+    [user, player, loading, isAdmin, homeRoute, refreshPlayer, logout],
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

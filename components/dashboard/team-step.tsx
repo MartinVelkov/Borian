@@ -564,7 +564,9 @@ export function TeamStep() {
                       </TD>
 
                       <TD>
-                        {team.category?.name || "-"}
+                        {categories.find(
+                          (category) => category.id === team.categoryId,
+                        )?.name || "-"}
                       </TD>
 
                       <TD>

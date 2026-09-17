@@ -11,6 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { db, storage } from "@/lib/firebase";
+import { getHomeRoute } from "@/lib/auth-routing";
 
 export default function CompleteProfilePage() {
   const router = useRouter();
@@ -77,7 +78,8 @@ export default function CompleteProfilePage() {
         phoneVerified: player?.phoneVerified ?? false,
         createdAt: player?.createdAt ?? serverTimestamp(), updatedAt: serverTimestamp(),
       }, { merge: true });
-      await refreshPlayer(); router.replace("/player");
+      await refreshPlayer();
+      router.replace(getHomeRoute(user.email, true));
     } catch { setError("Профилът не можа да бъде запазен."); } finally { setLoading(false); }
   }
 

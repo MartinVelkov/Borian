@@ -593,21 +593,32 @@ export function MatchControlPanel() {
     }
   }
 
-  function increment(
-    field: MatchStatField,
-    delta: number,
-  ) {
-    if (!match || saving) {
-      return;
-    }
-
-    const currentValue = safeNumber(match[field]);
-
-    void patchStats({
-      [field]: Math.max(0, currentValue + delta),
-    } as Partial<Match>);
+function increment(
+  field: MatchStatField,
+  delta: number,
+) {
+  if (!match || saving) {
+    return;
   }
 
+  const currentValue = safeNumber(match[field]);
+
+  let newValue = currentValue + delta;
+
+  if (
+    (field === "homeCorners" || field === "awayCorners"|| field === "homeFouls" && sportMode ==="FOOTBALL" || field === "awayFouls" && sportMode ==="FOOTBALL") &&
+    delta > 0 &&
+    newValue > 3
+  ) {
+    newValue = 1;
+  }
+
+  newValue = Math.max(0, newValue);
+
+  void patchStats({
+    [field]: newValue,
+  } as Partial<Match>);
+}
   function changeSportMode(nextSport: MatchSport) {
     if (!match || saving || sportMode === nextSport) {
       return;

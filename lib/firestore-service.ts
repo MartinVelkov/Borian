@@ -912,6 +912,7 @@ export async function finishMatch(matchId: string): Promise<void> {
       status: "FINISHED",
       timerState: "STOPPED",
       timerEndsAt: null,
+      timerRemainingSeconds: 0,
       updatedAt: new Date().toISOString(),
     }),
     "Завършването на мача",

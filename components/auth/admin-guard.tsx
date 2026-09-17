@@ -3,21 +3,41 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/auth/auth-provider";
+import type { HomeRoute } from "@/lib/auth-routing";
 
-export function AdminGuard({ children }: { children: React.ReactNode }) {
+type AuthRouteGuardProps = {
+  children: React.ReactNode;
+  route: HomeRoute;
+};
+
+export function AuthRouteGuard({ children, route }: AuthRouteGuardProps) {
   const router = useRouter();
-  const { user, loading } = useAuth();
+  const { user, loading, homeRoute } = useAuth();
 
   useEffect(() => {
-    // Временно премахваме блокировката за админ достъп.
-    if (!loading && !user) {
-      router.replace("/login?next=/dashboard");
-    }
-  }, [loading, user, router]);
+    if (loading) return;
 
-  if (loading) {
-    return <div className="flex min-h-screen items-center justify-center text-muted-foreground">Проверка на достъпа...</div>;
+    if (!user) {
+      router.replace(`/login?next=${encodeURIComponent(route)}`);
+      return;
+    }
+
+    if (homeRoute && homeRoute !== route) {
+      router.replace(homeRoute);
+    }
+  }, [homeRoute, loading, route, router, user]);
+
+  if (loading || !user || homeRoute !== route) {
+    return (
+      <div className="flex min-h-screen items-center justify-center text-muted-foreground">
+        Проверка на достъпа...
+      </div>
+    );
   }
 
   return <>{children}</>;
+}
+
+export function AdminGuard({ children }: { children: React.ReactNode }) {
+  return <AuthRouteGuard route="/dashboard">{children}</AuthRouteGuard>;
 }

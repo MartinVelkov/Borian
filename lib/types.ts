@@ -228,7 +228,6 @@ export type Tournament = {
   published?: boolean;
   createdAt?: unknown;
   updatedAt?: unknown;
-
   /* Optional for compatibility with old tournaments. */
   poolCount?: number;
   pools?: TournamentPool[];

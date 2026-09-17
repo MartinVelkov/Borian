@@ -1,40 +1,69 @@
-# dependencies
-node_modules/
-
-# Next.js
-.next/
-out/
-
-# environment files
-.env
-.env.local
-.env.*.local
-
-# logs
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-
-# OS
-.DS_Store
 # Dependencies
-node_modules/
+/node_modules/
+/.pnp
+.pnp.*
 
-# Next.js
-.next/
-out/
+# Next.js build output
+/.next/
+/out/
+/build/
+/dist/
+next-env.d.ts
+*.tsbuildinfo
 
-# Environment
-.env
-.env.local
-.env.*.local
+# Test and tool output
+/coverage/
+/.nyc_output/
+/.cache/
+/.turbo/
+.eslintcache
+.stylelintcache
 
-# Logs
+# Environment files and local secrets
+.env*
+!.env.example
+!.env.*.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Firebase local state, emulator data, and credentials
+/.firebase/
+/firebase-export-*/
+firebase-debug.log*
+firestore-debug.log*
+ui-debug.log*
+.runtimeconfig.json
+*-firebase-adminsdk-*.json
+service-account*.json
+firebase-service-account*.json
+
+# Hosting provider state
+/.vercel/
+/.netlify/
+
+# Package-manager and application logs
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# OS
+# Editor and IDE settings
+/.idea/
+/.vscode/
+*.swp
+*.swo
+*~
+
+# Operating-system files
 .DS_Store
+.DS_Store?
+._*
+Thumbs.db
+Desktop.ini
+
+# Local temporary files
+*.tmp
+*.temp
