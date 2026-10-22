@@ -238,16 +238,16 @@ function MatchTopBar({ sport }: { sport: SportMode }) {
 
 function TeamStats({ stats }: { stats: TeamStat[] }) {
   return (
-    <div className="grid w-full grid-cols-2 gap-2 md:gap-3">
+    <div className="grid w-full grid-cols-2 gap-[8px]">
       {stats.map((stat) => (
         <div
           key={stat.label}
-          className="rounded-xl border border-white/[0.08] bg-white/[0.035] px-3 py-2.5 backdrop-blur-sm md:rounded-2xl md:px-5 md:py-4"
+          className="flex h-[92px] flex-col items-center justify-center rounded-[13px] border border-white/[0.12] bg-white/[0.05] text-center shadow-[inset_0_0_24px_rgba(255,255,255,0.015)]"
         >
-          <p className="text-[7px] font-bold uppercase tracking-[0.17em] text-white/99 md:text-xs">
+          <p className="text-[10px] font-black uppercase leading-none tracking-[0.08em] text-white/70">
             {stat.label}
           </p>
-          <p className="mt-1 font-mono text-xl font-black tabular-nums text-white md:text-4xl">
+          <p className="mt-[8px] font-mono text-[34px] font-black leading-[0.78] tabular-nums text-white">
             {stat.value}
           </p>
         </div>
@@ -255,6 +255,7 @@ function TeamStats({ stats }: { stats: TeamStat[] }) {
     </div>
   );
 }
+
 
 function PossessionPill({ side }: { side: ScoreSide }) {
   return (
@@ -407,9 +408,9 @@ function BasketballPossession({ possession }: { possession: PossessionSide }) {
       <p className="text-center text-[7px] font-black uppercase tracking-[0.18em] text-white/30 md:text-[10px]">
         Притежание
       </p>
-      <div className="mt-2 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+      <div className="mt-2 grid grid-cols-[1fr_auto_1fr] items-center gap-1">
         <div
-          className={`rounded-xl border px-2 py-2 text-center text-[8px] font-black uppercase tracking-[0.12em] transition-all md:px-3 md:py-3 md:text-xs ${
+          className={`rounded-xl border px-1 py-2 text-center text-[8px] font-black uppercase tracking-[0.12em] transition-all md:px-3 md:py-3 md:text-xs ${
             possession === "HOME"
               ? "border-[var(--sport-accent)] bg-[var(--sport-accent)] text-[#120B04] shadow-[0_0_22px_rgba(var(--sport-accent-rgb),0.28)]"
               : "border-white/[0.07] bg-black/15 text-white/22"
@@ -421,7 +422,7 @@ function BasketballPossession({ possession }: { possession: PossessionSide }) {
           {possession === "HOME" ? "←" : possession === "AWAY" ? "→" : "•"}
         </span>
         <div
-          className={`rounded-xl border px-2 py-2 text-center text-[8px] font-black uppercase tracking-[0.12em] transition-all md:px-3 md:py-3 md:text-xs ${
+          className={`rounded-xl border px-0 py-2 text-center text-[8px] font-black uppercase tracking-[0.12em] transition-all md:px-3 md:py-3 md:text-xs ${
             possession === "AWAY"
               ? "border-[var(--sport-accent)] bg-[var(--sport-accent)] text-[#120B04] shadow-[0_0_22px_rgba(var(--sport-accent-rgb),0.28)]"
               : "border-white/[0.07] bg-black/15 text-white/22"

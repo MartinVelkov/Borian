@@ -213,7 +213,7 @@ export async function updateTournament(
 
 export async function deleteTournament(tournamentId: string): Promise<void> {
   const [categories, teams, matches] = await Promise.all([
-    getCategories(tournamentId), getTeams(tournamentId), getMatches(tournamentId),
+    getCategories(tournamentId), getTeams(tournamentId), getTournamentMatches(tournamentId),
   ]);
   if (categories.length || teams.length || matches.length) {
     throw new Error("Турнирът има свързани категории, отбори или мачове. Архивирайте го вместо да го изтривате.");
@@ -254,10 +254,16 @@ export async function createTeam(
 }
 
 export async function getTeams(tournamentId: string, categoryId?: string): Promise<Team[]> {
-  const teamsQuery = query(
-    collection(db, "teams"),
-    where("tournamentId", "==", tournamentId),
-  );
+  const teamsQuery = categoryId
+    ? query(
+        collection(db, "teams"),
+        where("tournamentId", "==", tournamentId),
+        where("categoryId", "==", categoryId),
+      )
+    : query(
+        collection(db, "teams"),
+        where("tournamentId", "==", tournamentId),
+      );
 
   const snapshot = await withTimeout(
     getDocs(teamsQuery),
@@ -270,8 +276,7 @@ export async function getTeams(tournamentId: string, categoryId?: string): Promi
         id: document.id,
         ...document.data(),
       }) as Team,
-  ).filter((team) => team.approvalStatus !== "pending" && team.approvalStatus !== "rejected")
-    .filter((team) => !categoryId || team.categoryId === categoryId);
+  ).filter((team) => team.approvalStatus !== "pending" && team.approvalStatus !== "rejected");
 }
 
 export async function getAllTeams(): Promise<Team[]> {
@@ -284,8 +289,22 @@ export async function updateTeam(teamId: string, updates: Partial<Omit<Team, "id
 }
 
 export async function deleteTeam(teamId: string): Promise<void> {
-  const matchSnapshot = await getDocs(query(collection(db, "matches"), where("homeTeamId", "==", teamId)));
-  const awaySnapshot = await getDocs(query(collection(db, "matches"), where("awayTeamId", "==", teamId)));
+  const teamSnapshot = await getDoc(doc(db, "teams", teamId));
+  if (!teamSnapshot.exists()) throw new Error("Отборът не съществува.");
+
+  const team = teamSnapshot.data() as Team;
+  if (!team.tournamentId || !team.categoryId) {
+    throw new Error("Отборът няма валидни турнир и категория.");
+  }
+
+  const matchScope = [
+    where("tournamentId", "==", team.tournamentId),
+    where("categoryId", "==", team.categoryId),
+  ] as const;
+  const [matchSnapshot, awaySnapshot] = await Promise.all([
+    getDocs(query(collection(db, "matches"), ...matchScope, where("homeTeamId", "==", teamId))),
+    getDocs(query(collection(db, "matches"), ...matchScope, where("awayTeamId", "==", teamId))),
+  ]);
   if (!matchSnapshot.empty || !awaySnapshot.empty) throw new Error("Отборът участва в мачове и не може да бъде изтрит.");
   await deleteDoc(doc(db, "teams", teamId));
 }
@@ -392,41 +411,57 @@ export async function addPlayerToTeam(
   );
 }
 
-export async function saveGeneratedSchedule(matches: Match[]): Promise<void> {
-  await saveMatches(matches);
+function hasRecordedMatchData(match: Match): boolean {
+  return (
+    match.status !== "SCHEDULED" ||
+    (match.homeScore ?? 0) !== 0 ||
+    (match.awayScore ?? 0) !== 0 ||
+    Boolean(match.playerStats && Object.keys(match.playerStats).length > 0)
+  );
 }
 
-export async function saveMatches(matches: Match[]): Promise<void> {
-  if (matches.length === 0) {
-    return;
+export async function replaceCategorySchedule(
+  tournamentId: string,
+  categoryId: string,
+  matches: Match[],
+  options: { allowReplacingPlayedMatches?: boolean } = {},
+): Promise<void> {
+  if (!tournamentId || !categoryId) {
+    throw new Error("Турнирът и категорията са задължителни.");
   }
 
-  const operations = matches.map((match) => ({
-    type: "set" as const,
-    path: `matches/${match.id}`,
-    data: matchDefaults(match),
-  }));
+  if (
+    matches.some(
+      (match) =>
+        match.tournamentId !== tournamentId || match.categoryId !== categoryId,
+    )
+  ) {
+    throw new Error(
+      "Всички мачове трябва да са от избрания турнир и категория.",
+    );
+  }
 
-  await commitInChunks(operations, "Записването на програмата");
-}
+  const generatedIds = new Set(matches.map((match) => match.id));
 
-/*
- * Used by the generator screen. It removes the previous schedule for the
- * selected tournament and writes the newly generated one.
- */
-export async function replaceTournamentSchedule(
-  tournamentId: string,
-  matches: Match[],
-  categoryId?: string,
-): Promise<void> {
-  const oldMatches = (await getMatches(tournamentId)).filter((match) =>
-    categoryId ? match.categoryId === categoryId : true,
-  );
+  if (generatedIds.size !== matches.length) {
+    throw new Error("Генерираната програма съдържа дублирани мачове.");
+  }
 
-  const deleteOperations = oldMatches.map((match) => ({
-    type: "delete" as const,
-    path: `matches/${match.id}`,
-  }));
+  const oldMatches = await getMatches(tournamentId, categoryId);
+  const hasProtectedMatches = oldMatches.some(hasRecordedMatchData);
+
+  if (hasProtectedMatches && !options.allowReplacingPlayedMatches) {
+    throw new Error(
+      "Категорията има започнали или завършени мачове. Потвърди повторното генериране.",
+    );
+  }
+
+  const deleteOperations = oldMatches
+    .filter((match) => !generatedIds.has(match.id))
+    .map((match) => ({
+      type: "delete" as const,
+      path: `matches/${match.id}`,
+    }));
 
   const setOperations = matches.map((match) => ({
     type: "set" as const,
@@ -440,10 +475,18 @@ export async function replaceTournamentSchedule(
   );
 }
 
-export async function getMatches(tournamentId: string): Promise<Match[]> {
+export async function getMatches(
+  tournamentId: string,
+  categoryId: string,
+): Promise<Match[]> {
+  if (!tournamentId || !categoryId) {
+    return [];
+  }
+
   const matchesQuery = query(
     collection(db, "matches"),
     where("tournamentId", "==", tournamentId),
+    where("categoryId", "==", categoryId),
   );
 
   const snapshot = await withTimeout(
@@ -463,6 +506,22 @@ export async function getMatches(tournamentId: string): Promise<Match[]> {
       (firstMatch, secondMatch) =>
         matchStartTimestamp(firstMatch) - matchStartTimestamp(secondMatch),
     );
+}
+
+async function getTournamentMatches(tournamentId: string): Promise<Match[]> {
+  const snapshot = await withTimeout(
+    getDocs(
+      query(
+        collection(db, "matches"),
+        where("tournamentId", "==", tournamentId),
+      ),
+    ),
+    "Зареждането на мачовете за турнира",
+  );
+
+  return snapshot.docs.map(
+    (document) => ({ id: document.id, ...document.data() }) as Match,
+  );
 }
 
 export async function getAllMatches(): Promise<Match[]> {
@@ -488,14 +547,16 @@ export async function getMatchById(matchId: string): Promise<Match | null> {
   } as Match;
 }
 
-export function listenToTournamentMatches(
+export function listenToCategoryMatches(
   tournamentId: string,
+  categoryId: string,
   onChange: (matches: Match[]) => void,
   onError?: (error: Error) => void,
 ): Unsubscribe {
   const matchesQuery = query(
     collection(db, "matches"),
     where("tournamentId", "==", tournamentId),
+    where("categoryId", "==", categoryId),
   );
 
   return onSnapshot(
@@ -570,7 +631,7 @@ export async function updateMatchScore(
 
 export async function updateMatchControlStats(
   matchId: string,
-  updates: Partial<Omit<Match, "id">>,
+  updates: Partial<Omit<Match, "id" | "tournamentId" | "categoryId">>,
 ): Promise<void> {
   const matchReference = doc(db, "matches", matchId);
 
@@ -773,111 +834,70 @@ function normalizeFirstRoundPoolRematches(params: {
 
 export async function resolveTournamentProgression(
   tournamentId: string,
+  categoryId: string,
 ): Promise<void> {
   const [tournament, teams, matches, categories] = await Promise.all([
     getTournamentById(tournamentId),
-    getTeams(tournamentId),
-    getMatches(tournamentId),
+    getTeams(tournamentId, categoryId),
+    getMatches(tournamentId, categoryId),
     getCategories(tournamentId),
   ]);
 
-  const format = tournament?.competitionFormat;
+  const category = categories.find((item) => item.id === categoryId);
+
+  if (!category || category.tournamentId !== tournamentId) {
+    throw new Error("Категорията не принадлежи към избрания турнир.");
+  }
+
+  // The tournament-level value is read only as a migration fallback for old
+  // data. New formats are always stored on the category document.
+  const format = category.format
+    ? category.competitionFormat ?? undefined
+    : tournament?.competitionFormat;
   const operations: Array<{
     type: "update";
     path: string;
     data: Partial<Match>;
   }> = [];
 
-  // If there are categories, resolve progression separately per category so
-  // knockout phases don't mix teams from different categories. If there are
-  // no categories, run a single pass over all teams and matches.
-  if (categories.length === 0) {
-    const normalizedBracket = normalizeFirstRoundPoolRematches({
-      matches,
+  const normalizedBracket = normalizeFirstRoundPoolRematches({
+    matches,
+    teams,
+    format,
+  });
+  const workingMatches = normalizedBracket.matches;
+
+  for (const update of normalizedBracket.updates) {
+    operations.push({
+      type: "update",
+      path: `matches/${update.matchId}`,
+      data: {
+        ...update.data,
+        updatedAt: new Date().toISOString(),
+      },
+    });
+  }
+
+  for (const match of workingMatches) {
+    const updates = resolveMatchParticipants({
+      match,
       teams,
+      matches: workingMatches,
       format,
     });
 
-    const workingMatches = normalizedBracket.matches;
-
-    for (const update of normalizedBracket.updates) {
-      operations.push({
-        type: "update",
-        path: `matches/${update.matchId}`,
-        data: {
-          ...update.data,
-          updatedAt: new Date().toISOString(),
-        },
-      });
+    if (!updates) {
+      continue;
     }
 
-    for (const match of workingMatches) {
-      const updates = resolveMatchParticipants({
-        match,
-        teams,
-        matches: workingMatches,
-        format,
-      });
-
-      if (!updates) {
-        continue;
-      }
-
-      operations.push({
-        type: "update",
-        path: `matches/${match.id}`,
-        data: {
-          ...updates,
-          updatedAt: new Date().toISOString(),
-        },
-      });
-    }
-  } else {
-    for (const category of categories) {
-      const categoryTeams = teams.filter((t) => t.categoryId === category.id);
-      const categoryMatches = matches.filter((m) => m.categoryId === category.id);
-
-      const normalizedBracket = normalizeFirstRoundPoolRematches({
-        matches: categoryMatches,
-        teams: categoryTeams,
-        format,
-      });
-
-      const workingMatches = normalizedBracket.matches;
-
-      for (const update of normalizedBracket.updates) {
-        operations.push({
-          type: "update",
-          path: `matches/${update.matchId}`,
-          data: {
-            ...update.data,
-            updatedAt: new Date().toISOString(),
-          },
-        });
-      }
-
-      for (const match of workingMatches) {
-        const updates = resolveMatchParticipants({
-          match,
-          teams: categoryTeams,
-          matches: workingMatches,
-          format,
-        });
-
-        if (!updates) {
-          continue;
-        }
-
-        operations.push({
-          type: "update",
-          path: `matches/${match.id}`,
-          data: {
-            ...updates,
-            updatedAt: new Date().toISOString(),
-          },
-        });
-      }
-    }
+    operations.push({
+      type: "update",
+      path: `matches/${match.id}`,
+      data: {
+        ...updates,
+        updatedAt: new Date().toISOString(),
+      },
+    });
   }
 
   if (operations.length > 0) {
@@ -918,7 +938,7 @@ export async function finishMatch(matchId: string): Promise<void> {
     "Завършването на мача",
   );
 
-  await resolveTournamentProgression(match.tournamentId);
+  await resolveTournamentProgression(match.tournamentId, match.categoryId);
 }
 
 export async function setMatchStatus(
@@ -1007,10 +1027,24 @@ export async function updateCategory(categoryId: string, updates: Partial<Omit<C
 }
 
 export async function deleteCategory(categoryId: string): Promise<void> {
-  const teamsSnapshot = await getDocs(query(collection(db, "teams"), where("categoryId", "==", categoryId)));
-  const matchesSnapshot = await getDocs(query(collection(db, "matches"), where("categoryId", "==", categoryId)));
+  const categoryReference = doc(db, "categories", categoryId);
+  const categorySnapshot = await getDoc(categoryReference);
+
+  if (!categorySnapshot.exists()) throw new Error("Категорията не съществува.");
+
+  const tournamentId = String(categorySnapshot.data().tournamentId ?? "");
+  const teamsSnapshot = await getDocs(query(
+    collection(db, "teams"),
+    where("tournamentId", "==", tournamentId),
+    where("categoryId", "==", categoryId),
+  ));
+  const matchesSnapshot = await getDocs(query(
+    collection(db, "matches"),
+    where("tournamentId", "==", tournamentId),
+    where("categoryId", "==", categoryId),
+  ));
   if (!teamsSnapshot.empty || !matchesSnapshot.empty) throw new Error("Категорията има свързани отбори или мачове и не може да бъде изтрита.");
-  await withTimeout(deleteDoc(doc(db, "categories", categoryId)), "Изтриването на категорията");
+  await withTimeout(deleteDoc(categoryReference), "Изтриването на категорията");
 }
 
 export async function getRegistrations(tournamentId?: string): Promise<TournamentRegistration[]> {
@@ -1234,17 +1268,26 @@ export async function updatePlayerGoal(
   );
 }
 
-export async function saveCompetitionFormat(
+export async function saveCategoryCompetitionFormat(
   tournamentId: string,
+  categoryId: string,
   format: CompetitionFormat,
 ): Promise<void> {
+  const categoryReference = doc(db, "categories", categoryId);
+  const categorySnapshot = await getDoc(categoryReference);
+
+  if (
+    !categorySnapshot.exists() ||
+    categorySnapshot.data().tournamentId !== tournamentId
+  ) {
+    throw new Error("Категорията не принадлежи към избрания турнир.");
+  }
+
   await withTimeout(
     setDoc(
-      doc(db, "tournaments", tournamentId),
+      categoryReference,
       {
         format: "GROUP_KNOCKOUT",
-        poolCount: format.pools.length,
-        pools: format.pools,
         competitionFormat: format,
         updatedAt: new Date().toISOString(),
       },
@@ -1256,15 +1299,27 @@ export async function saveCompetitionFormat(
   );
 }
 
-export async function saveTournamentFormat(
+export async function saveCategoryTournamentFormat(
   tournamentId: string,
+  categoryId: string,
   format: TournamentFormat,
 ): Promise<void> {
+  const categoryReference = doc(db, "categories", categoryId);
+  const categorySnapshot = await getDoc(categoryReference);
+
+  if (
+    !categorySnapshot.exists() ||
+    categorySnapshot.data().tournamentId !== tournamentId
+  ) {
+    throw new Error("Категорията не принадлежи към избрания турнир.");
+  }
+
   await withTimeout(
     setDoc(
-      doc(db, "tournaments", tournamentId),
+      categoryReference,
       {
         format,
+        competitionFormat: null,
         updatedAt: new Date().toISOString(),
       },
       { merge: true },

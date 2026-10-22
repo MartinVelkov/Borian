@@ -17,7 +17,7 @@ import {
   getCategories,
   getMatches,
   getTournaments,
-  listenToTournamentMatches,
+  listenToCategoryMatches,
 } from "@/lib/firestore-service";
 import type { Category, Match, Tournament } from "@/lib/types";
 
@@ -39,27 +39,29 @@ export function BracketViewerPanel() {
     [selectedTournamentId, tournaments],
   );
 
+  const selectedCategory = useMemo(
+    () =>
+      categories.find(
+        (category) => category.id === selectedCategoryId,
+      ) ?? null,
+    [categories, selectedCategoryId],
+  );
+
   async function loadTournaments() {
     setLoadingTournaments(true);
     setMessage("");
 
     try {
       const items = await getTournaments();
-      const groupTournaments = items.filter(
-        (tournament) =>
-          tournament.format === "GROUP_KNOCKOUT" ||
-          tournament.competitionFormat?.type === "GROUP_KNOCKOUT",
-      );
-
-      setTournaments(groupTournaments);
+      setTournaments(items);
       setSelectedTournamentId((currentId) => {
-        const stillExists = groupTournaments.some(
+        const stillExists = items.some(
           (tournament) => tournament.id === currentId,
         );
 
         return stillExists
           ? currentId
-          : groupTournaments[0]?.id ?? "";
+          : items[0]?.id ?? "";
       });
     } catch (error) {
       console.error("Failed to load bracket tournaments:", error);
@@ -73,10 +75,6 @@ export function BracketViewerPanel() {
     } finally {
       setLoadingTournaments(false);
     }
-  }
-
-  function filterMatchesByCategory(items: Match[], categoryId: string) {
-    return categoryId ? items.filter((match) => match.categoryId === categoryId) : items;
   }
 
   async function loadCategories(tournamentId: string) {
@@ -94,7 +92,7 @@ export function BracketViewerPanel() {
           return currentId;
         }
 
-        return "";
+        return items[0]?.id ?? "";
       });
     } catch (error) {
       console.error("Failed to load bracket categories:", error);
@@ -104,7 +102,7 @@ export function BracketViewerPanel() {
   }
 
   async function refreshMatches() {
-    if (!selectedTournamentId) {
+    if (!selectedTournamentId || !selectedCategoryId) {
       setMatches([]);
       return;
     }
@@ -113,8 +111,11 @@ export function BracketViewerPanel() {
     setMessage("");
 
     try {
-      const nextMatches = await getMatches(selectedTournamentId);
-      setMatches(filterMatchesByCategory(nextMatches, selectedCategoryId));
+      const nextMatches = await getMatches(
+        selectedTournamentId,
+        selectedCategoryId,
+      );
+      setMatches(nextMatches);
     } catch (error) {
       console.error("Failed to refresh bracket matches:", error);
       setMessage(
@@ -139,16 +140,17 @@ export function BracketViewerPanel() {
     setMatches([]);
     setMessage("");
 
-    if (!selectedTournamentId) {
+    if (!selectedTournamentId || !selectedCategoryId) {
       return;
     }
 
     setLoadingMatches(true);
 
-    const unsubscribe = listenToTournamentMatches(
+    const unsubscribe = listenToCategoryMatches(
       selectedTournamentId,
+      selectedCategoryId,
       (nextMatches) => {
-        setMatches(filterMatchesByCategory(nextMatches, selectedCategoryId));
+        setMatches(nextMatches);
         setLoadingMatches(false);
       },
       (error) => {
@@ -164,7 +166,7 @@ export function BracketViewerPanel() {
   }, [selectedTournamentId, selectedCategoryId]);
 
   const standaloneUrl = useMemo(() => {
-    if (!selectedTournamentId) {
+    if (!selectedTournamentId || !selectedCategoryId) {
       return "";
     }
 
@@ -172,9 +174,7 @@ export function BracketViewerPanel() {
       tournamentId: selectedTournamentId,
     });
 
-    if (selectedCategoryId) {
-      params.set("categoryId", selectedCategoryId);
-    }
+    params.set("categoryId", selectedCategoryId);
 
     if (typeof window === "undefined") {
       return "";
@@ -253,7 +253,7 @@ export function BracketViewerPanel() {
               onChange={(event) => setSelectedCategoryId(event.target.value)}
               disabled={!selectedTournamentId || categories.length === 0}
             >
-              <option value="">Всички категории</option>
+              {categories.length === 0 && <option value="">Няма категории</option>}
               {categories.map((category) => (
                 <option key={category.id} value={category.id}>
                   {category.name}
@@ -266,7 +266,7 @@ export function BracketViewerPanel() {
             <Button
               type="button"
               variant="outline"
-              disabled={!selectedTournamentId || loadingMatches}
+              disabled={!selectedTournamentId || !selectedCategoryId || loadingMatches}
               onClick={() => void refreshMatches()}
             >
               {loadingMatches ? (
@@ -316,6 +316,7 @@ export function BracketViewerPanel() {
       ) : selectedTournament ? (
         <TournamentBracketView
           tournament={selectedTournament}
+          competitionFormat={selectedCategory?.competitionFormat}
           matches={matches}
           title={selectedTournament.name}
           description="Групите, продължаващите отбори и елиминационната схема се виждат на един екран."

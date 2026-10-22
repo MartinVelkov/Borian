@@ -452,10 +452,7 @@ export function MatchControlPanel() {
     setMessage("");
 
     try {
-      const items = await getMatches(tournamentId);
-      const filteredItems = categoryId
-        ? items.filter((currentMatch) => currentMatch.categoryId === categoryId)
-        : items;
+      const filteredItems = await getMatches(tournamentId, categoryId);
 
       setMatches(filteredItems);
 
@@ -501,7 +498,7 @@ export function MatchControlPanel() {
           return currentId;
         }
 
-        return "";
+        return items[0]?.id ?? "";
       });
     } catch (error) {
       console.error("Failed to load categories:", error);
@@ -797,7 +794,7 @@ function increment(
               }
               disabled={!selectedTournamentId || categories.length === 0}
             >
-              <option value="">Всички категории</option>
+              {categories.length === 0 && <option value="">Няма категории</option>}
 
               {categories.map((category) => (
                 <option key={category.id} value={category.id}>

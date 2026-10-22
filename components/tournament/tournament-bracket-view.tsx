@@ -864,16 +864,21 @@ export function TournamentBracketPlanPreview({
 
 export function TournamentBracketView({
   tournament,
+  competitionFormat,
   matches,
   title = "Турнирна схема",
   description = "Групите и елиминационната фаза се обновяват според резултатите.",
 }: {
   tournament?: Tournament | null;
+  competitionFormat?: CompetitionFormat | null;
   matches: Match[];
   title?: string;
   description?: string;
 }) {
-  const format = tournament?.competitionFormat;
+  const format =
+    competitionFormat === undefined
+      ? tournament?.competitionFormat
+      : competitionFormat;
 
   if (!format || format.type !== "GROUP_KNOCKOUT") {
     return (

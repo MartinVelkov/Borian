@@ -120,6 +120,8 @@ export type Category = {
   id: string;
   tournamentId: string;
   name: string;
+  format?: TournamentFormat;
+  competitionFormat?: CompetitionFormat | null;
   description?: string;
   sport?: MatchSport;
   minAge?: number | null;
@@ -253,7 +255,7 @@ export type TournamentRegistration = {
 export type Match = {
   id: string;
   tournamentId: string;
-  categoryId?: string;
+  categoryId: string;
 
   /*
    * Unresolved knockout games can use an empty ID while the name contains

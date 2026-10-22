@@ -31,17 +31,23 @@ export function PrintBracketContent() {
         return;
       }
 
+      if (!categoryId) {
+        setLoading(false);
+        setMessage("Липсва категория.");
+        return;
+      }
+
       try {
         setLoading(true);
         const [nextTournaments, nextMatches, nextCategories] = await Promise.all([
           getTournaments(),
-          getMatches(tournamentId),
+          getMatches(tournamentId, categoryId),
           getCategories(tournamentId),
         ]);
 
         setTournaments(nextTournaments);
         setCategories(nextCategories);
-        setMatches(categoryId ? nextMatches.filter((match) => match.categoryId === categoryId) : nextMatches);
+        setMatches(nextMatches);
       } catch (error) {
         console.error(error);
         setMessage(error instanceof Error ? error.message : "Неуспешно зареждане на схемата.");
@@ -70,7 +76,7 @@ export function PrintBracketContent() {
               {selectedTournament?.name ?? "Турнирна схема"}
             </h1>
             <p className="mt-1 text-sm text-slate-600">
-              {selectedCategory ? `Категория: ${selectedCategory.name}` : "Всички категории"}
+              {selectedCategory ? `Категория: ${selectedCategory.name}` : "Неизбрана категория"}
             </p>
           </div>
           <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50">
@@ -90,6 +96,7 @@ export function PrintBracketContent() {
           <div className="overflow-x-auto">
             <TournamentBracketView
               tournament={selectedTournament}
+              competitionFormat={selectedCategory?.competitionFormat}
               matches={matches}
               title={selectedTournament.name}
               description={selectedCategory ? `Схема за ${selectedCategory.name}` : "Схема за турнира"}

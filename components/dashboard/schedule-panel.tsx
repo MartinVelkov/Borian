@@ -36,10 +36,10 @@ import {
   getTeams,
   getTournaments,
   getCategories,
-  replaceTournamentSchedule,
+  replaceCategorySchedule,
   resolveTournamentProgression,
-  saveCompetitionFormat,
-  saveTournamentFormat,
+  saveCategoryCompetitionFormat,
+  saveCategoryTournamentFormat,
 } from "@/lib/firestore-service";
 import {
   generateKnockoutSchedule,
@@ -1078,6 +1078,14 @@ export function SchedulePanel() {
     [selectedTournamentId, tournaments],
   );
 
+  const selectedCategory = useMemo(
+    () =>
+      categories.find(
+        (category) => category.id === selectedCategoryId,
+      ),
+    [categories, selectedCategoryId],
+  );
+
 
   const recommendedPlan = useMemo(
     () => recommendedTournamentPlan(teams.length),
@@ -1248,16 +1256,19 @@ export function SchedulePanel() {
 
   function restoreConfiguration(
     tournament: Tournament | undefined,
+    category: Category | undefined,
     loadedTeams: Team[],
   ) {
-    const savedFormat = tournament?.competitionFormat;
+    const savedFormat = category?.format
+      ? category.competitionFormat ?? undefined
+      : tournament?.competitionFormat;
 
     if (!savedFormat || savedFormat.pools.length === 0) {
       const nextMode: PoolSeedingMode = "SNAKE";
       const plan = recommendedTournamentPlan(loadedTeams.length);
 
       setGenerationFormat(
-        tournament?.format === "ROUND_ROBIN"
+        (category?.format ?? tournament?.format) === "ROUND_ROBIN"
           ? "ROUND_ROBIN"
           : "GROUP_KNOCKOUT",
       );
@@ -1362,7 +1373,7 @@ export function SchedulePanel() {
     );
   }
 
-  async function loadTournamentData(tournamentId: string, categoryId = selectedCategoryId) {
+  async function loadTournamentData(tournamentId: string, categoryId = "") {
     if (!tournamentId) {
       setTeams([]);
       setMatches([]);
@@ -1374,13 +1385,28 @@ export function SchedulePanel() {
     setMessage("");
 
     try {
-      const [loadedTeams, loadedMatches, loadedCategories] = await Promise.all([
-        getTeams(tournamentId, categoryId || undefined),
-        getMatches(tournamentId),
-        getCategories(tournamentId),
-      ]);
+      const loadedCategories = await getCategories(tournamentId);
+      const targetCategoryId = loadedCategories.some(
+        (category) => category.id === categoryId,
+      )
+        ? categoryId
+        : loadedCategories[0]?.id ?? "";
+
       setCategories(loadedCategories);
-      if (!categoryId && loadedCategories[0]) setSelectedCategoryId(loadedCategories[0].id);
+      setSelectedCategoryId(targetCategoryId);
+
+      if (!targetCategoryId) {
+        setTeams([]);
+        setMatches([]);
+        setAssignments({});
+        setMessage("Създай поне една категория за турнира.");
+        return;
+      }
+
+      const [loadedTeams, loadedMatches] = await Promise.all([
+        getTeams(tournamentId, targetCategoryId),
+        getMatches(tournamentId, targetCategoryId),
+      ]);
 
       const sortedTeams = [...loadedTeams].sort(
         (first, second) =>
@@ -1388,10 +1414,13 @@ export function SchedulePanel() {
       );
 
       setTeams(sortedTeams);
-      setMatches(categoryId ? loadedMatches.filter((match) => match.categoryId === categoryId) : loadedMatches);
+      setMatches(loadedMatches);
       restoreConfiguration(
         tournaments.find(
           (tournament) => tournament.id === tournamentId,
+        ),
+        loadedCategories.find(
+          (category) => category.id === targetCategoryId,
         ),
         sortedTeams,
       );
@@ -1418,7 +1447,9 @@ export function SchedulePanel() {
   }, [selectedTournamentId]);
 
   useEffect(() => {
-    if (selectedTournamentId && selectedCategoryId) void loadTournamentData(selectedTournamentId, selectedCategoryId);
+    if (selectedTournamentId && selectedCategoryId) {
+      void loadTournamentData(selectedTournamentId, selectedCategoryId);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCategoryId]);
 
@@ -1539,13 +1570,49 @@ export function SchedulePanel() {
       return;
     }
 
+    if (!selectedCategoryId) {
+      setMessage("Първо избери категория.");
+      return;
+    }
+
     setLoading(true);
     setMessage("");
 
     const formData = new FormData(event.currentTarget);
 
     try {
-      const freshTeams = await getTeams(selectedTournamentId, selectedCategoryId || undefined);
+      const [freshTeams, existingMatches] = await Promise.all([
+        getTeams(selectedTournamentId, selectedCategoryId),
+        getMatches(selectedTournamentId, selectedCategoryId),
+      ]);
+
+      let allowReplacingPlayedMatches = false;
+
+      if (existingMatches.length > 0) {
+        const hasPlayedMatches = existingMatches.some(
+          (match) =>
+            match.status !== "SCHEDULED" ||
+            (match.homeScore ?? 0) !== 0 ||
+            (match.awayScore ?? 0) !== 0 ||
+            Boolean(
+              match.playerStats &&
+                Object.keys(match.playerStats).length > 0,
+            ),
+        );
+        const categoryName = selectedCategory?.name ?? "избраната категория";
+        const confirmed = window.confirm(
+          hasPlayedMatches
+            ? `Категория „${categoryName}“ има започнали или завършени мачове. Повторното генериране ще изтрие резултатите само за тази категория. Продължаваш ли?`
+            : `Категория „${categoryName}“ вече има програма. Да бъде ли заменена само за тази категория?`,
+        );
+
+        if (!confirmed) {
+          setMessage("Повторното генериране е отказано. Съществуващите мачове са запазени.");
+          return;
+        }
+
+        allowReplacingPlayedMatches = true;
+      }
 
       if (freshTeams.length < 2) {
         throw new Error(
@@ -1577,6 +1644,7 @@ export function SchedulePanel() {
       if (generationFormat === "ROUND_ROBIN") {
         const generated = generateRoundRobinSchedule({
           tournamentId: selectedTournamentId,
+          categoryId: selectedCategoryId,
           teams: freshTeams,
           startTime,
           matchDuration,
@@ -1585,18 +1653,30 @@ export function SchedulePanel() {
           sport: selectedTournament?.sport,
         });
 
-        const categoryMatches = generated.map((item) => ({ ...item, categoryId: selectedCategoryId || undefined }));
-        await replaceTournamentSchedule(
+        await replaceCategorySchedule(
           selectedTournamentId,
-          categoryMatches,
-          selectedCategoryId || undefined,
+          selectedCategoryId,
+          generated,
+          { allowReplacingPlayedMatches },
         );
-        await saveTournamentFormat(
+        await saveCategoryTournamentFormat(
           selectedTournamentId,
+          selectedCategoryId,
           "ROUND_ROBIN",
         );
 
-        setMatches(categoryMatches);
+        setCategories((current) =>
+          current.map((category) =>
+            category.id === selectedCategoryId
+              ? {
+                  ...category,
+                  format: "ROUND_ROBIN",
+                  competitionFormat: null,
+                }
+              : category,
+          ),
+        );
+        setMatches(generated);
         setMessage(
           `Генерирани са ${generated.length} мача.`,
         );
@@ -1647,6 +1727,7 @@ export function SchedulePanel() {
 
       const poolMatches = generatePoolSchedule({
         tournamentId: selectedTournamentId,
+        categoryId: selectedCategoryId,
         pools: freshPools,
         startTime,
         matchDuration,
@@ -1718,7 +1799,7 @@ export function SchedulePanel() {
           fieldCount,
           includeThirdPlaceMatch,
           sport: selectedTournament?.sport,
-          categoryId: selectedCategoryId || undefined,
+          categoryId: selectedCategoryId,
         });
       }
 
@@ -1762,37 +1843,40 @@ export function SchedulePanel() {
         return new Date(first.startTime ?? 0).getTime() - new Date(second.startTime ?? 0).getTime();
       });
 
-      const categoryMatches = generated.map((item) => ({ ...item, categoryId: selectedCategoryId || undefined }));
-      await replaceTournamentSchedule(
+      await replaceCategorySchedule(
         selectedTournamentId,
-        categoryMatches,
-        selectedCategoryId || undefined,
+        selectedCategoryId,
+        generated,
+        { allowReplacingPlayedMatches },
       );
-      await saveCompetitionFormat(
+      await saveCategoryCompetitionFormat(
         selectedTournamentId,
+        selectedCategoryId,
         competitionFormat,
       );
 
-      setTournaments((current) =>
-        current.map((tournament) =>
-          tournament.id === selectedTournamentId
+      setCategories((current) =>
+        current.map((category) =>
+          category.id === selectedCategoryId
             ? {
-                ...tournament,
+                ...category,
                 format: "GROUP_KNOCKOUT",
                 competitionFormat,
               }
-            : tournament,
+            : category,
         ),
       );
 
       await resolveTournamentProgression(
         selectedTournamentId,
+        selectedCategoryId,
       );
 
       const savedMatches = await getMatches(
         selectedTournamentId,
+        selectedCategoryId,
       );
-      setMatches(selectedCategoryId ? savedMatches.filter((item) => item.categoryId === selectedCategoryId) : savedMatches);
+      setMatches(savedMatches);
       setMessage(
         `Готово: ${poolMatches.length} групови и ${knockoutMatches.length} елиминационни мача.`,
       );
@@ -1847,7 +1931,7 @@ export function SchedulePanel() {
 
       <CardContent className="space-y-6 p-4 sm:p-6">
         <form
-          key={selectedTournamentId}
+          key={`${selectedTournamentId}:${selectedCategoryId}`}
           onSubmit={generate}
           className="space-y-6"
         >
@@ -1894,7 +1978,7 @@ export function SchedulePanel() {
                   ))}
                 </Select>
               </div>
-              <div className="space-y-2"><Label htmlFor="scheduleCategory">Категория</Label><Select id="scheduleCategory" value={selectedCategoryId} onChange={(event) => setSelectedCategoryId(event.target.value)} disabled={!categories.length}><option value="">Всички категории</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</Select></div>
+              <div className="space-y-2"><Label htmlFor="scheduleCategory">Категория</Label><Select id="scheduleCategory" value={selectedCategoryId} onChange={(event) => setSelectedCategoryId(event.target.value)} disabled={!categories.length}>{categories.length === 0 && <option value="">Няма категории</option>}{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</Select></div>
 
               <div className="space-y-2 md:col-span-2">
                 <Label htmlFor="startTime">Начало</Label>
@@ -2190,7 +2274,7 @@ export function SchedulePanel() {
             <Button
               type="submit"
               size="lg"
-              disabled={loading || !selectedTournamentId}
+              disabled={loading || !selectedTournamentId || !selectedCategoryId}
               className="min-w-56"
             >
               {loading ? (
@@ -2238,6 +2322,7 @@ export function SchedulePanel() {
                 />
                 <TournamentBracketView
                   tournament={selectedTournament}
+                  competitionFormat={selectedCategory?.competitionFormat}
                   matches={matches}
                   title="Групи и bracket схема"
                   description="Класирането от групите и пътят до финала са показани заедно."

@@ -994,7 +994,7 @@ export default function PlayerPage() {
 
                       <span className="text-[38px]">
                         {selectedTournament?.sport ===
-                        "basketball"
+                        "BASKETBALL"
                           ? "🏀"
                           : "⚽"}
                       </span>

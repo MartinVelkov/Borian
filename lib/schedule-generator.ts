@@ -54,6 +54,7 @@ function matchId(...parts: Array<string | number>) {
 function createBaseMatch(params: {
   id: string;
   tournamentId: string;
+  categoryId: string;
   homeTeamId: string;
   awayTeamId: string;
   homeTeamName: string;
@@ -68,6 +69,7 @@ function createBaseMatch(params: {
   return {
     id: params.id,
     tournamentId: params.tournamentId,
+    categoryId: params.categoryId,
     homeTeamId: params.homeTeamId,
     awayTeamId: params.awayTeamId,
     homeTeamName: params.homeTeamName,
@@ -148,6 +150,7 @@ export function createRoundRobinRounds(teams: Team[]): Array<Array<[Team, Team]>
 
 export function generateRoundRobinSchedule(params: {
   tournamentId: string;
+  categoryId: string;
   teams: Team[];
   startTime: string;
   matchDuration: number;
@@ -174,12 +177,14 @@ export function generateRoundRobinSchedule(params: {
           ...createBaseMatch({
             id: matchId(
               params.tournamentId,
+              params.categoryId,
               "round-robin",
               `round-${roundIndex + 1}`,
               home.id,
               away.id,
             ),
             tournamentId: params.tournamentId,
+            categoryId: params.categoryId,
             homeTeamId: home.id,
             awayTeamId: away.id,
             homeTeamName: home.name,
@@ -205,6 +210,7 @@ export function generateRoundRobinSchedule(params: {
 
 export function generatePoolSchedule(params: {
   tournamentId: string;
+  categoryId: string;
   pools: TournamentPool[];
   startTime: string;
   matchDuration: number;
@@ -254,6 +260,7 @@ export function generatePoolSchedule(params: {
           ...createBaseMatch({
             id: matchId(
               params.tournamentId,
+              params.categoryId,
               "pool",
               pool.id,
               `round-${roundIndex + 1}`,
@@ -262,6 +269,7 @@ export function generatePoolSchedule(params: {
               away.id,
             ),
             tournamentId: params.tournamentId,
+            categoryId: params.categoryId,
             homeTeamId: home.id,
             awayTeamId: away.id,
             homeTeamName: home.name,
@@ -359,7 +367,7 @@ function createKnockoutMatch(params: {
   matchDuration: number;
   fieldNumber: number;
   sport?: MatchSport;
-  categoryId?: string;
+  categoryId: string;
 }): Match {
   const home = sourceDisplay(params.homeSource);
   const away = sourceDisplay(params.awaySource);
@@ -369,10 +377,12 @@ function createKnockoutMatch(params: {
     ...createBaseMatch({
       id: matchId(
         params.tournamentId,
+        params.categoryId,
         params.stage.toLowerCase(),
         params.bracketOrder + 1,
       ),
       tournamentId: params.tournamentId,
+      categoryId: params.categoryId,
       homeTeamId: home.teamId,
       awayTeamId: away.teamId,
       homeTeamName: home.teamName,
@@ -390,7 +400,6 @@ function createKnockoutMatch(params: {
     bracketOrder: params.bracketOrder,
     homeSource: params.homeSource,
     awaySource: params.awaySource,
-    categoryId: params.categoryId,
   };
 }
 
@@ -403,7 +412,7 @@ function scheduleKnockoutRound(params: {
   breakDuration: number;
   fieldCount: number;
   sport?: MatchSport;
-  categoryId?: string;
+  categoryId: string;
 }): { matches: Match[]; nextStartTime: Date } {
   const matches: Match[] = [];
   let currentTime = new Date(params.startTime);
@@ -450,7 +459,7 @@ export function generateKnockoutSchedule(params: {
   fieldCount: number;
   includeThirdPlaceMatch?: boolean;
   sport?: MatchSport;
-  categoryId?: string;
+  categoryId: string;
 }): Match[] {
   assertValidScheduleSettings(params);
 
