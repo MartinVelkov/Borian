@@ -65,7 +65,7 @@ pm2 start npm --name football-3x3 -- start
 pm2 save
 ```
 
-След това сложи Nginx отпред като reverse proxy към порт 3000.
+След това сложи Nginx отпред като reverse proxy към порт 3001.
 
 ## Tailwind/PostCSS бележка
 
