@@ -247,7 +247,7 @@ function TeamStats({ stats }: { stats: TeamStat[] }) {
           <p className="text-[10px] font-black uppercase leading-none tracking-[0.08em] text-white/70">
             {stat.label}
           </p>
-          <p className="mt-[8px] font-mono text-[34px] font-black leading-[0.78] tabular-nums text-white">
+          <p className="mt-[8px] font-mono text-[50px] font-black leading-[0.78] tabular-nums text-white">
             {stat.value}
           </p>
         </div>

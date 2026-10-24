@@ -20,7 +20,6 @@ next-env.d.ts
 .stylelintcache
 
 # Environment files and local secrets
-.env*
 !.env.example
 !.env.*.example
 *.pem
