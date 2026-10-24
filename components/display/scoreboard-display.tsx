@@ -244,7 +244,7 @@ function TeamStats({ stats }: { stats: TeamStat[] }) {
           key={stat.label}
           className="flex h-[92px] flex-col items-center justify-center rounded-[13px] border border-white/[0.12] bg-white/[0.05] text-center shadow-[inset_0_0_24px_rgba(255,255,255,0.015)]"
         >
-          <p className="text-[30px] font-black uppercase leading-none tracking-[0.08em] text-white/70">
+          <p className="text-[10px] font-black uppercase leading-none tracking-[0.08em] text-white">
             {stat.label}
           </p>
           <p className="mt-[8px] font-mono text-[65px] font-black leading-[0.78] tabular-nums text-white">
