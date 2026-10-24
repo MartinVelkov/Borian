@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { PageHeader } from "@/components/dashboard/page-header";
 import { Badge } from "@/components/ui/badge";
@@ -17,12 +17,18 @@ import {
 } from "@/components/ui/table";
 
 import {
+  getAllTeams,
+  getCategories,
+  getPlayers,
   getRegistrations,
   getTournaments,
   updateRegistrationStatus,
 } from "@/lib/firestore-service";
 
 import type {
+  Category,
+  Player,
+  Team,
   Tournament,
   TournamentRegistration,
 } from "@/lib/types";
@@ -31,28 +37,61 @@ export default function RegistrationsPage() {
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
   const [tournamentId, setTournamentId] = useState("");
   const [items, setItems] = useState<TournamentRegistration[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [players, setPlayers] = useState<Player[]>([]);
+  const [teams, setTeams] = useState<Team[]>([]);
   const [message, setMessage] = useState("");
 
   useEffect(() => {
-    void getTournaments()
-      .then((data) => {
-        setTournaments(data);
-        setTournamentId(data[0]?.id ?? "");
+    void Promise.all([getTournaments(), getPlayers(), getAllTeams()])
+      .then(([tournamentData, playerData, teamData]) => {
+        setTournaments(tournamentData);
+        setPlayers(playerData);
+        setTeams(teamData);
+        setTournamentId(tournamentData[0]?.id ?? "");
       })
       .catch((e) => {
         setMessage(e.message);
       });
   }, []);
 
-  async function load(id: string) {
-    setItems(id ? await getRegistrations(id) : []);
-  }
+  const load = useCallback(async (id: string) => {
+    if (!id) {
+      setItems([]);
+      setCategories([]);
+      return;
+    }
+
+    const [registrationData, categoryData] = await Promise.all([
+      getRegistrations(id),
+      getCategories(id),
+    ]);
+    setItems(registrationData);
+    setCategories(categoryData);
+  }, []);
+
+  const tournamentById = useMemo(
+    () => new Map(tournaments.map((item) => [item.id, item])),
+    [tournaments],
+  );
+  const categoryById = useMemo(
+    () => new Map(categories.map((item) => [item.id, item])),
+    [categories],
+  );
+  const playerByUid = useMemo(
+    () => new Map(players.map((item) => [item.uid, item])),
+    [players],
+  );
+  const teamById = useMemo(
+    () => new Map(teams.map((item) => [item.id, item])),
+    [teams],
+  );
 
   useEffect(() => {
     void load(tournamentId).catch((e) => {
       setMessage(e.message);
     });
-  }, [tournamentId]);
+  }, [load, tournamentId]);
 
   async function change(
     id: string,
@@ -99,37 +138,55 @@ export default function RegistrationsPage() {
               Няма регистрации за този турнир.
             </p>
           ) : (
+            <div className="overflow-x-auto">
             <Table>
               <THead>
                 <TR>
                   <TH>Отбор</TH>
+                  <TH>Турнир</TH>
                   <TH>Категория</TH>
-                  <TH>Капитан UID</TH>
+                  <TH>Капитан</TH>
                   <TH>Статус</TH>
                   <TH>Действия</TH>
                 </TR>
               </THead>
 
               <TBody>
-                {items.map((item) => (
-                  <TR key={item.id}>
-                    <TD>{item.name}</TD>
+                {items.map((item) => {
+                  const status = getRegistrationStatus(item);
+                  const captain = getCaptainLabel(
+                    item,
+                    playerByUid.get(item.captainUid),
+                  );
+                  const team = teamById.get(item.teamId);
 
-                    <TD>{item.categoryId}</TD>
+                  return (
+                    <TR key={item.id}>
+                    <TD>{item.name || team?.name || "Без име"}</TD>
 
-                    <TD className="font-mono text-xs">
-                      {item.captainUid}
+                    <TD>
+                      {item.tournamentName ||
+                        tournamentById.get(item.tournamentId)?.name ||
+                        item.tournamentId}
                     </TD>
+
+                    <TD>
+                      {item.categoryName ||
+                        categoryById.get(item.categoryId)?.name ||
+                        item.categoryId}
+                    </TD>
+
+                    <TD>{captain}</TD>
 
                     <TD>
                       <Badge
                         variant={
-                          item.status === "approved"
+                          status === "approved"
                             ? "secondary"
                             : "outline"
                         }
                       >
-                        {item.status}
+                        {status}
                       </Badge>
                     </TD>
 
@@ -139,7 +196,7 @@ export default function RegistrationsPage() {
                         onClick={() =>
                           void change(item.id, "approved")
                         }
-                        disabled={item.status === "approved"}
+                        disabled={status === "approved"}
                       >
                         Одобри
                       </Button>
@@ -154,10 +211,12 @@ export default function RegistrationsPage() {
                         Откажи
                       </Button>
                     </TD>
-                  </TR>
-                ))}
+                    </TR>
+                  );
+                })}
               </TBody>
             </Table>
+            </div>
           )}
 
           {message && (
@@ -169,4 +228,25 @@ export default function RegistrationsPage() {
       </Card>
     </>
   );
+}
+
+function getRegistrationStatus(
+  registration: TournamentRegistration,
+) {
+  return registration.approvalStatus ?? registration.status ?? "pending";
+}
+
+function getCaptainLabel(
+  registration: TournamentRegistration,
+  player?: Player,
+) {
+  if (registration.captainName) return registration.captainName;
+  if (registration.captainEmail) return registration.captainEmail;
+  if (player?.displayName) return player.displayName;
+
+  const profileName = [player?.firstName, player?.lastName]
+    .filter(Boolean)
+    .join(" ");
+
+  return profileName || player?.email || registration.captainUid;
 }

@@ -1,23 +1,17 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { ReactNode } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import {
-  ArrowRight,
-  CalendarDays,
-  ChevronRight,
-  MapPin,
-  Users,
-} from "lucide-react";
+import { ArrowRight, ChevronRight, GraduationCap } from "lucide-react";
 
 import logo from "./bulgarian-street-sports-logo.jpg";
 
 import { useAuth } from "@/components/auth/auth-provider";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PublicTournamentCard } from "@/components/tournament/public-tournament-card";
 
 import {
   getCategories,
@@ -48,11 +42,14 @@ export default function HomePage() {
     void (async () => {
       try {
         const items = await getPublishedTournaments();
+        const standardItems = items.filter(
+          (item) => (item.type ?? "standard") === "standard",
+        );
 
-        setTournaments(items);
+        setTournaments(standardItems);
 
         const pairs = await Promise.all(
-          items.map(
+          standardItems.map(
             async (item) =>
               [
                 item.id,
@@ -81,6 +78,7 @@ export default function HomePage() {
   const filteredTournaments = useMemo(() => {
     return tournaments.filter(
       (tournament) =>
+        (tournament.type ?? "standard") === "standard" &&
         tournament.sport === activeSport
     );
   }, [tournaments, activeSport]);
@@ -164,6 +162,13 @@ export default function HomePage() {
             >
               Турнири
             </a>
+
+            <Link
+              href="/school-championship"
+              className="text-black/65 transition hover:text-black"
+            >
+              Ученическо първенство
+            </Link>
 
             <button
               type="button"
@@ -292,6 +297,14 @@ export default function HomePage() {
 
               <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
             </Link>
+
+            <Link
+              href="/school-championship"
+              className="group flex h-12 items-center gap-1 text-[17px] font-medium text-[#f56300]"
+            >
+              Ученическо първенство
+              <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+            </Link>
           </div>
 
           {/* SPORT BUTTONS */}
@@ -326,6 +339,32 @@ export default function HomePage() {
             </button>
           </div>
         </div>
+      </section>
+
+      <section className="px-5 py-16 md:px-8 md:py-24">
+        <Link
+          href="/school-championship"
+          className="group mx-auto flex max-w-[1200px] flex-col items-start justify-between gap-8 overflow-hidden rounded-[38px] bg-gradient-to-br from-[#132a20] via-[#17422e] to-[#0b2117] p-9 text-white shadow-[0_30px_80px_rgba(15,60,35,0.18)] transition-transform duration-500 hover:-translate-y-1 sm:p-12 md:flex-row md:items-center md:p-16"
+        >
+          <div className="max-w-[720px]">
+            <div className="mb-6 flex h-14 w-14 items-center justify-center rounded-2xl bg-white/10 ring-1 ring-white/15">
+              <GraduationCap className="h-8 w-8" />
+            </div>
+            <p className="mb-3 text-sm font-semibold uppercase tracking-[0.16em] text-emerald-200/80">
+              Спорт за ученици
+            </p>
+            <h2 className="text-[38px] font-semibold leading-[1.02] tracking-[-0.04em] sm:text-[48px] md:text-[58px]">
+              Ученическо първенство
+            </h2>
+            <p className="mt-5 max-w-[620px] text-[17px] leading-relaxed text-white/65 md:text-[19px]">
+              Открий публикуваните училищни турнири по футбол и баскетбол.
+            </p>
+          </div>
+          <span className="flex shrink-0 items-center gap-2 rounded-full bg-white px-6 py-3 text-[15px] font-semibold text-[#17422e] transition-transform group-hover:translate-x-1">
+            Виж първенствата
+            <ArrowRight className="h-4 w-4" />
+          </span>
+        </Link>
       </section>
 
       {/* ================================================= */}
@@ -406,7 +445,7 @@ export default function HomePage() {
             <div className="space-y-7">
               {filteredTournaments.map(
                 (tournament, index) => (
-                  <TournamentCard
+                  <PublicTournamentCard
                     key={tournament.id}
                     tournament={tournament}
                     categories={
@@ -496,243 +535,6 @@ export default function HomePage() {
 }
 
 /* ====================================================== */
-/* TOURNAMENT CARD                                        */
-/* ====================================================== */
-
-function TournamentCard({
-  tournament,
-  categories,
-  accountHref,
-  isLoggedIn,
-  profileCompleted,
-  featured,
-}: {
-  tournament: Tournament;
-  categories: number;
-  accountHref: string;
-  isLoggedIn: boolean;
-  profileCompleted?: boolean;
-  featured?: boolean;
-}) {
-  const FOOTBALL =
-    tournament.sport === "FOOTBALL";
-    console.log("Is it FOOTBALL",FOOTBALL)
-  return (
-    <article
-      className={`group relative overflow-hidden bg-white transition-shadow duration-500 hover:shadow-[0_30px_80px_rgba(0,0,0,0.07)] ${
-        featured
-          ? "min-h-[610px] rounded-[38px] md:min-h-[650px]"
-          : "rounded-[32px]"
-      }`}
-    >
-      {featured ? (
-        <div className="relative grid min-h-[610px] md:grid-cols-2">
-          {/* CONTENT */}
-
-          <div className="relative z-10 flex flex-col justify-center p-8 sm:p-12 md:p-16">
-            <div className="mb-5 flex flex-wrap items-center gap-3">
-              <p
-                className={`text-[14px] font-semibold ${
-                  FOOTBALL
-                    ? "text-[#0071e3]"
-                    : "text-[#f56300]"
-                }`}
-              >
-                {FOOTBALL
-                  ? "3x3 FOOTBALL"
-                  : "3x3 BASKETBALL"}
-              </p>
-
-              {!tournament.registrationOpen && (
-                <span className="rounded-full bg-[#f5f5f7] px-3 py-1 text-[11px] font-semibold text-[#6e6e73]">
-                  Записването е затворено
-                </span>
-              )}
-            </div>
-
-            <h3 className="max-w-[500px] text-[42px] font-semibold leading-[0.98] tracking-[-0.045em] md:text-[58px]">
-              {tournament.name}
-            </h3>
-
-            <p className="mt-6 max-w-[460px] text-[17px] leading-relaxed text-[#6e6e73]">
-              {tournament.description ||
-                (FOOTBALL
-                  ? "3x3 футболен турнир"
-                  : "3x3 баскетболен турнир")}
-            </p>
-
-            <div className="mt-8 space-y-4 text-[15px]">
-              <TournamentInfo
-                icon={
-                  <CalendarDays />
-                }
-                value={formatDate(
-                  tournament.startDate
-                )}
-              />
-
-              <TournamentInfo
-                icon={<MapPin />}
-                value={
-                  tournament.location ||
-                  "Локацията предстои"
-                }
-              />
-
-              <TournamentInfo
-                icon={<Users />}
-                value={`${categories} ${
-                  categories === 1
-                    ? "категория"
-                    : "категории"
-                }`}
-              />
-            </div>
-
-            {tournament.registrationOpen && (
-              <div className="mt-9">
-                <Button
-                  asChild
-                  className="h-11 rounded-full bg-[#0071e3] px-6 text-white shadow-none hover:bg-[#0077ed]"
-                >
-                  <Link href={accountHref}>
-                    {!isLoggedIn
-                      ? "Регистрирай се"
-                      : !profileCompleted
-                        ? "Завърши профила"
-                        : "Участвай"}
-
-                    <ArrowRight className="ml-2 h-4 w-4" />
-                  </Link>
-                </Button>
-              </div>
-            )}
-          </div>
-
-          {/* VISUAL */}
-
-          <div className="relative min-h-[340px] overflow-hidden md:min-h-full">
-            <div
-              className={`absolute inset-0 ${
-                FOOTBALL
-                  ? "bg-gradient-to-br from-[#dff4ff] via-[#e9f8ff] to-[#ffffff]"
-                  : "bg-gradient-to-br from-[#fff0dd] via-[#fff6e9] to-[#ffffff]"
-              }`}
-            />
-
-            <div
-              className={`absolute left-1/2 top-1/2 h-[380px] w-[380px] -translate-x-1/2 -translate-y-1/2 rounded-full blur-[90px] ${
-                FOOTBALL
-                  ? "bg-blue-400/20"
-                  : "bg-orange-400/30"
-              }`}
-            />
-
-            <div className="absolute inset-0 flex items-center justify-center">
-              <span className="select-none text-[180px] drop-shadow-[0_35px_25px_rgba(0,0,0,0.15)] transition-transform duration-700 group-hover:-rotate-3 group-hover:scale-[1.08] md:text-[230px]">
-                {FOOTBALL ? "⚽" : "🏀"}
-              </span>
-            </div>
-          </div>
-        </div>
-      ) : (
-        <div className="flex flex-col gap-6 p-8 md:flex-row md:items-center md:justify-between md:p-10">
-          <div>
-            <div className="mb-2 flex flex-wrap items-center gap-3">
-              <p
-                className={`text-[13px] font-semibold ${
-                  FOOTBALL
-                    ? "text-[#0071e3]"
-                    : "text-[#f56300]"
-                }`}
-              >
-                {FOOTBALL
-                  ? "3x3 FOOTBALL"
-                  : "3x3 BASKETBALL"}
-              </p>
-
-              {!tournament.registrationOpen && (
-                <span className="rounded-full bg-[#f5f5f7] px-2.5 py-1 text-[10px] font-semibold text-[#6e6e73]">
-                  Затворено
-                </span>
-              )}
-            </div>
-
-            <h3 className="text-[28px] font-semibold tracking-[-0.03em]">
-              {tournament.name}
-            </h3>
-
-            <div className="mt-4 flex flex-wrap gap-x-6 gap-y-3 text-[14px] text-[#6e6e73]">
-              <TournamentInfo
-                icon={
-                  <CalendarDays />
-                }
-                value={formatDate(
-                  tournament.startDate
-                )}
-              />
-
-              <TournamentInfo
-                icon={<MapPin />}
-                value={
-                  tournament.location ||
-                  "Локацията предстои"
-                }
-              />
-
-              <TournamentInfo
-                icon={<Users />}
-                value={`${categories} ${
-                  categories === 1
-                    ? "категория"
-                    : "категории"
-                }`}
-              />
-            </div>
-          </div>
-
-          {tournament.registrationOpen && (
-            <Button
-              asChild
-              variant="ghost"
-              className="w-fit rounded-full text-[#0066cc] hover:bg-transparent hover:text-[#0077ed]"
-            >
-              <Link href={accountHref}>
-                Участвай
-
-                <ChevronRight className="ml-1 h-4 w-4" />
-              </Link>
-            </Button>
-          )}
-        </div>
-      )}
-    </article>
-  );
-}
-
-/* ====================================================== */
-/* TOURNAMENT INFO                                        */
-/* ====================================================== */
-
-function TournamentInfo({
-  icon,
-  value,
-}: {
-  icon: ReactNode;
-  value: string;
-}) {
-  return (
-    <div className="flex items-center gap-2 text-[#6e6e73]">
-      <span className="[&>svg]:h-[17px] [&>svg]:w-[17px]">
-        {icon}
-      </span>
-
-      <span>{value}</span>
-    </div>
-  );
-}
-
-/* ====================================================== */
 /* EMPTY STATE                                            */
 /* ====================================================== */
 
@@ -786,24 +588,4 @@ function EventsSkeleton() {
       <Skeleton className="h-[160px] rounded-[32px]" />
     </div>
   );
-}
-
-/* ====================================================== */
-/* UTILS                                                  */
-/* ====================================================== */
-
-function formatDate(date: string) {
-  const parsedDate = new Date(date);
-
-  if (Number.isNaN(parsedDate.getTime())) {
-    return "Датата предстои";
-  }
-
-  return new Intl.DateTimeFormat("bg-BG", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(parsedDate);
 }

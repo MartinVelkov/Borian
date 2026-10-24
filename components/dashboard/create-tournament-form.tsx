@@ -28,7 +28,9 @@ export function CreateTournamentForm() {
   const [items, setItems] = useState<Tournament[]>([]);
   const [editing, setEditing] = useState<Tournament | null>(null);
   const [published, setPublished] = useState(false);
-  const [type, setType] = useState("FOOTBALL");
+  const [sport, setSport] = useState<NonNullable<Tournament["sport"]>>(
+    "FOOTBALL",
+  );
   const [registrationOpen, setRegistrationOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
@@ -43,11 +45,13 @@ export function CreateTournamentForm() {
     setEditing(item);
     setPublished(item.published ?? false);
     setRegistrationOpen(item.registrationOpen ?? false);
+    setSport(item.sport ?? "FOOTBALL");
   }
   function reset() {
     setEditing(null);
     setPublished(false);
     setRegistrationOpen(false);
+    setSport("FOOTBALL");
   }
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -64,7 +68,8 @@ export function CreateTournamentForm() {
       breakDuration: Number(data.get("breakDuration")),
       fieldCount: Number(data.get("fieldCount")),
       format: editing?.format ?? ("ROUND_ROBIN" as const),
-      sport: type as "FOOTBALL" | "BASKETBALL",
+      sport,
+      type: String(data.get("type")) as NonNullable<Tournament["type"]>,
       published,
       registrationOpen,
     };
@@ -172,6 +177,17 @@ export function CreateTournamentForm() {
                 <option value="CANCELLED">Отменен</option>
               </Select>
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="type">Тип турнир</Label>
+              <Select
+                id="type"
+                name="type"
+                defaultValue={editing?.type ?? "standard"}
+              >
+                <option value="standard">Стандартен турнир</option>
+                <option value="school">Училищен турнир</option>
+              </Select>
+            </div>
             <div className="grid grid-cols-3 gap-2">
               <div>
                 <Label>Мач (мин.)</Label>
@@ -209,12 +225,14 @@ export function CreateTournamentForm() {
                 onCheckedChange={setPublished}
               />
             </div>
-                        <div className="flex items-center justify-between rounded-md border p-3">
-              <Label htmlFor="published">Баскетбол или Футбол</Label>
+            <div className="flex items-center justify-between rounded-md border p-3">
+              <Label htmlFor="sport">Баскетбол или Футбол</Label>
               <Switch
-                id="type"
-                checked={type === "BASKETBALL"}
-                onCheckedChange={(checked) => setType(checked ? "BASKETBALL" : "FOOTBALL")}
+                id="sport"
+                checked={sport === "BASKETBALL"}
+                onCheckedChange={(checked) =>
+                  setSport(checked ? "BASKETBALL" : "FOOTBALL")
+                }
               />
             </div>
             <div className="flex items-center justify-between rounded-md border p-3">
@@ -256,6 +274,7 @@ export function CreateTournamentForm() {
                 <TR>
                   <TH>Турнир</TH>
                   <TH>Статус</TH>
+                  <TH>Тип</TH>
                   <TH>Публичен</TH>
                   <TH>Действия</TH>
                 </TR>
@@ -273,6 +292,9 @@ export function CreateTournamentForm() {
                       <Badge variant="outline">
                         {item.status ?? "UPCOMING"}
                       </Badge>
+                    </TD>
+                    <TD>
+                      {item.type === "school" ? "Училищен" : "Стандартен"}
                     </TD>
                     <TD>{item.published ? "Да" : "Не"}</TD>
                     <TD className="space-x-2">

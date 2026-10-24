@@ -3,6 +3,8 @@ export type TournamentFormat =
   | "GROUP_KNOCKOUT"
   | "CUSTOM";
 
+export type TournamentType = "standard" | "school";
+
 export type MatchStatus =
   | "SCHEDULED"
   | "LIVE"
@@ -221,6 +223,8 @@ export type Tournament = {
   breakDuration: number;
   fieldCount: number;
   sport?: MatchSport;
+  /** Missing on legacy documents and treated as "standard" when loaded. */
+  type?: TournamentType;
   endDate?: string;
   status?: "UPCOMING" | "ACTIVE" | "FINISHED" | "CANCELLED";
   description?: string;
@@ -240,14 +244,21 @@ export type RegistrationStatus = "pending" | "approved" | "rejected";
 
 export type TournamentRegistration = {
   id: string;
-  name:string;
-  email: string;
-  phone: string;
+  name: string;
   tournamentId: string;
+  tournamentName?: string;
   categoryId: string;
+  categoryName?: string;
   teamId: string;
   captainUid: string;
-  status: RegistrationStatus;
+  captainName?: string;
+  captainEmail?: string;
+  members?: TeamMember[];
+  /** Legacy registration documents use status. */
+  status?: RegistrationStatus;
+  approvalStatus?: RegistrationStatus;
+  email?: string;
+  phone?: string;
   createdAt?: unknown;
   updatedAt?: unknown;
 };

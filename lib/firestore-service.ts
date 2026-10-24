@@ -30,8 +30,10 @@ import type {
   MatchSource,
   Player,
   Team,
+  TeamMember,
   Tournament,
   TournamentFormat,
+  TournamentType,
   TournamentRegistration,
   RegistrationStatus,
 } from "@/lib/types";
@@ -44,6 +46,7 @@ export type CreateTournamentInput = {
   matchDuration: number;
   breakDuration: number;
   fieldCount: number;
+  sport?: Tournament["sport"];
   endDate?: string;
   status?: Tournament["status"];
   description?: string;
@@ -51,7 +54,19 @@ export type CreateTournamentInput = {
   registrationOpen?: boolean;
   registrationDeadline?: string;
   published?: boolean;
+  type?: TournamentType;
 };
+
+function tournamentFromDocument(
+  id: string,
+  data: Record<string, unknown>,
+): Tournament {
+  return {
+    ...data,
+    id,
+    type: data.type === "school" ? "school" : "standard",
+  } as Tournament;
+}
 
 export type MatchTimerUpdate = Partial<
   Pick<
@@ -163,6 +178,7 @@ export async function createTournament(
   const tournamentDocument = await withTimeout(
     addDoc(tournamentsCollection, {
       ...tournament,
+      type: tournament.type ?? "standard",
       createdAt: serverTimestamp(),
     }),
     "Създаването на турнир",
@@ -182,12 +198,8 @@ export async function getTournaments(): Promise<Tournament[]> {
     "Зареждането на турнири",
   );
 
-  return snapshot.docs.map(
-    (document) =>
-      ({
-        id: document.id,
-        ...document.data(),
-      }) as Tournament,
+  return snapshot.docs.map((document) =>
+    tournamentFromDocument(document.id, document.data()),
   );
 }
 
@@ -197,7 +209,7 @@ export async function getPublishedTournaments(): Promise<Tournament[]> {
     "Зареждането на публични турнири",
   );
   return snapshot.docs
-    .map((item) => ({ id: item.id, ...item.data() }) as Tournament)
+    .map((item) => tournamentFromDocument(item.id, item.data()))
     .sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime());
 }
 
@@ -233,10 +245,7 @@ export async function getTournamentById(
     return null;
   }
 
-  return {
-    id: snapshot.id,
-    ...snapshot.data(),
-  } as Tournament;
+  return tournamentFromDocument(snapshot.id, snapshot.data());
 }
 
 export async function createTeam(
@@ -1056,24 +1065,55 @@ export async function getRegistrations(tournamentId?: string): Promise<Tournamen
 }
 
 export async function createRegistration(data: Omit<TournamentRegistration, "id" | "status" | "createdAt" | "updatedAt">): Promise<string> {
-  const [tournamentSnapshot, categorySnapshot, teamSnapshot] = await Promise.all([
+  const [tournamentSnapshot, categorySnapshot, teamSnapshot, playerSnapshot] = await Promise.all([
     getDoc(doc(db, "tournaments", data.tournamentId)),
     getDoc(doc(db, "categories", data.categoryId)),
     getDoc(doc(db, "teams", data.teamId)),
+    getDoc(doc(db, "players", data.captainUid)),
   ]);
   if (!tournamentSnapshot.exists() || tournamentSnapshot.data().registrationOpen !== true) throw new Error("Регистрацията за турнира е затворена.");
   if (!categorySnapshot.exists() || categorySnapshot.data().tournamentId !== data.tournamentId || categorySnapshot.data().registrationOpen === false) throw new Error("Категорията не приема регистрации.");
   if (!teamSnapshot.exists() || teamSnapshot.data().captainUid !== data.captainUid) throw new Error("Само капитанът може да регистрира този отбор.");
   const duplicate = await getDocs(query(collection(db, "registrations"), where("teamId", "==", data.teamId)));
   if (duplicate.docs.some((item) => item.data().tournamentId === data.tournamentId && item.data().categoryId === data.categoryId)) throw new Error("Отборът вече има регистрация за тази категория.");
-  const reference = await withTimeout(addDoc(collection(db, "registrations"), { ...data, status: "pending", createdAt: serverTimestamp(), updatedAt: serverTimestamp() }), "Изпращането на регистрацията");
+  const playerData = playerSnapshot.exists() ? playerSnapshot.data() : null;
+  const captainName =
+    data.captainName?.trim() ||
+    String(playerData?.displayName ?? "").trim() ||
+    [playerData?.firstName, playerData?.lastName]
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+  const captainEmail =
+    data.captainEmail?.trim() || String(playerData?.email ?? "").trim();
+  const reference = await withTimeout(addDoc(collection(db, "registrations"), {
+    ...data,
+    tournamentName:
+      data.tournamentName || String(tournamentSnapshot.data().name ?? ""),
+    categoryName:
+      data.categoryName || String(categorySnapshot.data().name ?? ""),
+    ...(captainName ? { captainName } : {}),
+    ...(captainEmail ? { captainEmail } : {}),
+    members:
+      data.members ??
+      (teamSnapshot.data().members as TeamMember[] | undefined) ??
+      [{ uid: data.captainUid, role: "captain" }],
+    status: "pending",
+    approvalStatus: "pending",
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  }), "Изпращането на регистрацията");
   return reference.id;
 }
 
 export async function submitTeamRegistration(data: {
   tournamentId: string;
+  tournamentName: string;
   categoryId: string;
+  categoryName: string;
   captainUid: string;
+  captainName?: string;
+  captainEmail?: string;
   teamName: string;
 }): Promise<string> {
   const [tournamentSnapshot, categorySnapshot, playerSnapshot] = await Promise.all([
@@ -1084,11 +1124,39 @@ export async function submitTeamRegistration(data: {
   if (!playerSnapshot.exists() || playerSnapshot.data().profileCompleted !== true) throw new Error("Профилът трябва да бъде завършен.");
   if (!tournamentSnapshot.exists() || tournamentSnapshot.data().registrationOpen !== true) throw new Error("Регистрацията е затворена.");
   if (!categorySnapshot.exists() || categorySnapshot.data().tournamentId !== data.tournamentId || categorySnapshot.data().registrationOpen === false) throw new Error("Категорията не приема регистрации.");
+  const playerData = playerSnapshot.data();
+  const captainName =
+    data.captainName?.trim() ||
+    String(playerData.displayName ?? "").trim() ||
+    [playerData.firstName, playerData.lastName].filter(Boolean).join(" ").trim();
+  const captainEmail =
+    data.captainEmail?.trim() || String(playerData.email ?? "").trim();
+  const tournamentName =
+    data.tournamentName.trim() || String(tournamentSnapshot.data().name ?? "");
+  const categoryName =
+    data.categoryName.trim() || String(categorySnapshot.data().name ?? "");
+  const members = [{ uid: data.captainUid, role: "captain" as const }];
   const teamRef = doc(collection(db, "teams"));
   const registrationRef = doc(collection(db, "registrations"));
   const batch = writeBatch(db);
-  batch.set(teamRef, { name: data.teamName.trim(), tournamentId: data.tournamentId, categoryId: data.categoryId, captainUid: data.captainUid, members: [{ uid: data.captainUid, role: "captain" }], approvalStatus: "pending", createdAt: serverTimestamp() });
-  batch.set(registrationRef, { tournamentId: data.tournamentId, categoryId: data.categoryId, teamId: teamRef.id, captainUid: data.captainUid, status: "pending", createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+  batch.set(teamRef, { name: data.teamName.trim(), tournamentId: data.tournamentId, categoryId: data.categoryId, captainUid: data.captainUid, members, approvalStatus: "pending", createdAt: serverTimestamp() });
+  batch.set(registrationRef, {
+    name: data.teamName.trim(),
+    tournamentId: data.tournamentId,
+    tournamentName,
+    categoryId: data.categoryId,
+    categoryName,
+    teamId: teamRef.id,
+    captainUid: data.captainUid,
+    ...(captainName ? { captainName } : {}),
+    ...(captainEmail ? { captainEmail } : {}),
+    approvalStatus: "pending",
+    // Kept for existing rules and legacy consumers.
+    status: "pending",
+    members,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
   await withTimeout(batch.commit(), "Изпращането на отборната регистрация");
   return registrationRef.id;
 }
@@ -1106,7 +1174,11 @@ export async function updateRegistrationStatus(registrationId: string, status: R
     } else if (status === "rejected") {
       transaction.update(doc(db, "teams", registration.teamId), { approvalStatus: "rejected", updatedAt: serverTimestamp() });
     }
-    transaction.update(registrationRef, { status, updatedAt: serverTimestamp() });
+    transaction.update(registrationRef, {
+      status,
+      approvalStatus: status,
+      updatedAt: serverTimestamp(),
+    });
   }), "Промяната на регистрацията");
 }
 

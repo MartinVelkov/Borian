@@ -438,6 +438,14 @@ export default function PlayerPage() {
       return;
     }
 
+    if (!selectedTournament) {
+      showError(
+        "Избраният турнир не е намерен."
+      );
+
+      return;
+    }
+
     /*
      * ВАЖНО:
      * Проверяваме възрастта отново при самото
@@ -477,9 +485,24 @@ export default function PlayerPage() {
     try {
       await submitTeamRegistration({
         tournamentId,
+        tournamentName:
+          selectedTournament.name,
         categoryId,
+        categoryName:
+          selectedCategory.name,
         captainUid:
           user.uid,
+        captainName:
+          player?.displayName ||
+          user.displayName ||
+          [player?.firstName, player?.lastName]
+            .filter(Boolean)
+            .join(" ") ||
+          undefined,
+        captainEmail:
+          player?.email ||
+          user.email ||
+          undefined,
         teamName,
       });
 

@@ -38,6 +38,7 @@ ui-debug.log*
 *-firebase-adminsdk-*.json
 service-account*.json
 firebase-service-account*.json
+/serviceAccountKey.json*
 
 # Hosting provider state
 /.vercel/
